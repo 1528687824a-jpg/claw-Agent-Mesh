@@ -32,7 +32,10 @@ import {
   markModelCallStarted,
   markModelCallSucceeded
 } from "../../../packages/db/src/model-calls";
+import { getAgentEventsForJob } from "../../../packages/db/src/session";
 import type {
+  AgentEventRecord,
+  ArtifactRecord,
   GroupMessageRecord,
   GroupMessageType,
   RoutingMode,
@@ -45,6 +48,8 @@ import { DEFAULT_ROUTING_MODE } from "../../../packages/shared/src/types";
 import { sendFeishuTextMessage } from "./adapters/feishu";
 import { runOpenClawAgent, type OpenClawRunResult } from "./adapters/openclaw";
 import { maybeCrashOnce } from "./test-crash";
+
+type OpenClawActionType = "stage-agent" | "test-agent" | "main-agent-synthesis";
 
 function nowIso() {
   return new Date().toISOString();
@@ -68,10 +73,10 @@ function getModelCallResult(payload: Record<string, unknown> | null): OpenClawRu
 
 async function runOpenClawAgentIdempotent(input: {
   jobId: string;
-  stageId: string;
+  stageId?: string | null;
   stageIndex: number;
   attemptNo: number;
-  actionType: "stage-agent" | "test-agent";
+  actionType: OpenClawActionType;
   agentId: string;
   sessionId: string;
   message: string;
@@ -79,7 +84,7 @@ async function runOpenClawAgentIdempotent(input: {
 }): Promise<OpenClawRunResult | null> {
   const idempotencyKey = [
     input.jobId,
-    input.stageId,
+    input.stageId ?? "job",
     input.attemptNo,
     input.actionType
   ].join(":");
@@ -99,7 +104,7 @@ async function runOpenClawAgentIdempotent(input: {
       },
       {
         actor: "tool-gateway",
-        stageId: input.stageId
+        stageId: input.stageId ?? null
       }
     );
     return getModelCallResult(existing.responsePayload);
@@ -135,7 +140,7 @@ async function runOpenClawAgentIdempotent(input: {
     },
     {
       actor: "tool-gateway",
-      stageId: input.stageId
+      stageId: input.stageId ?? null
     }
   );
 
@@ -167,7 +172,7 @@ async function runOpenClawAgentIdempotent(input: {
       },
       {
         actor: "tool-gateway",
-        stageId: input.stageId
+        stageId: input.stageId ?? null
       }
     );
 
@@ -1054,6 +1059,183 @@ export async function recordDiscussionRound(input: {
   });
 }
 
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function compactMultiline(value: string, maxLength = 2000) {
+  const compacted = value.replace(/\s+/g, " ").trim();
+  return compacted.length > maxLength ? `${compacted.slice(0, maxLength)}...` : compacted;
+}
+
+function parseArtifactSummary(artifact: ArtifactRecord | null): string {
+  if (!artifact?.content) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(artifact.content) as Record<string, unknown>;
+    const summary = asString(parsed.summary);
+    if (summary) {
+      return summary;
+    }
+  } catch {
+    // Fall back to plain text below.
+  }
+
+  return compactMultiline(artifact.content);
+}
+
+async function getArtifactOrNull(artifactId: string | null) {
+  if (!artifactId) {
+    return null;
+  }
+
+  try {
+    return await getArtifact(artifactId);
+  } catch {
+    return null;
+  }
+}
+
+async function getDiscussionOutputRows(events: AgentEventRecord[]) {
+  const completedEvents = events.filter(
+    (event) =>
+      event.eventType === "stage.agent_completed" &&
+      event.payload?.routingMode === "master_slave_discussion"
+  );
+
+  const rows = [];
+  for (const event of completedEvents) {
+    const artifactId = asString(event.payload?.outputArtifactId);
+    const artifact = await getArtifactOrNull(artifactId);
+    rows.push({
+      seq: event.seq,
+      stageId: event.stageId,
+      agentId: asString(event.payload?.agentId) ?? event.actor,
+      attemptNo: asNumber(event.payload?.attemptNo),
+      artifactId,
+      summary: parseArtifactSummary(artifact)
+    });
+  }
+
+  return rows;
+}
+
+export async function mainAgentSynthesizeDiscussion(jobId: string) {
+  const job = await getJob(jobId);
+  if (!job) {
+    throw new Error(`Job not found: ${jobId}`);
+  }
+
+  const [stages, events] = await Promise.all([getStagesForJob(jobId), getAgentEventsForJob(jobId)]);
+  const discussionRows = await getDiscussionOutputRows(events);
+  const roundEvents = events.filter((event) => event.eventType === "discussion.round_completed");
+  const workdir = job.workdir ?? path.resolve(process.env.JOB_DATA_DIR ?? "data/jobs", jobId);
+  const finalDir = path.join(workdir, "final");
+  await mkdir(finalDir, { recursive: true });
+
+  const discussionThread = discussionRows.map((row) =>
+    [
+      `Seq: ${row.seq}`,
+      `Round: ${row.attemptNo ?? "unknown"}`,
+      `Agent: ${row.agentId}`,
+      `Stage: ${row.stageId ?? "unknown"}`,
+      `Artifact: ${row.artifactId ?? "missing"}`,
+      `Summary: ${row.summary || "No summary recorded."}`
+    ].join("\n")
+  );
+  const prompt = [
+    "You are main-agent. Synthesize the completed master_slave_discussion thread into the final answer.",
+    "Use the agent event ledger as the source of truth. Preserve useful disagreements, final consensus, risks, and next steps.",
+    "",
+    `Job: ${jobId}`,
+    `Original user request: ${job.rawPrompt}`,
+    `Stages: ${stages.map((stage) => `${stage.stageIndex}:${stage.agentId}`).join(", ")}`,
+    `Completed discussion rounds: ${roundEvents.length}`,
+    "",
+    "Discussion thread:",
+    discussionThread.join("\n\n---\n\n")
+  ].join("\n");
+
+  const sessionId = `${job.sessionId}:main-agent:discussion-synthesis`;
+  const openClawResult = await runOpenClawAgentIdempotent({
+    jobId,
+    stageId: null,
+    stageIndex: 0,
+    attemptNo: 1,
+    actionType: "main-agent-synthesis",
+    agentId: "main-agent",
+    sessionId,
+    message: prompt,
+    timeoutSeconds: Number(process.env.OPENCLAW_AGENT_TIMEOUT_SECONDS ?? 600)
+  });
+
+  const synthesisBody =
+    openClawResult?.text ??
+    [
+      `# ${jobId} Discussion Synthesis`,
+      "",
+      "main-agent synthesized the master_slave_discussion ledger.",
+      "",
+      `Rounds completed: ${roundEvents.length}`,
+      `Stage outputs synthesized: ${discussionRows.length}`,
+      "",
+      "Discussion ledger summary:",
+      ...discussionRows.map(
+        (row) =>
+          `- round ${row.attemptNo ?? "?"} ${row.agentId} (${row.artifactId ?? "no artifact"}): ${
+            row.summary || "No summary recorded."
+          }`
+      )
+    ].join("\n");
+  const synthesisPath = path.join(finalDir, "discussion-synthesis.md");
+
+  await writeFile(synthesisPath, synthesisBody, "utf8");
+  const artifact = await createArtifact({
+    id: `${jobId}-ART-DISCUSSION-SYNTHESIS`,
+    jobId,
+    type: "discussion_synthesis",
+    title: "main-agent discussion synthesis",
+    content: synthesisBody,
+    uri: synthesisPath,
+    metadata: {
+      routingMode: "master_slave_discussion",
+      roundCount: roundEvents.length,
+      stageCount: stages.length,
+      outputCount: discussionRows.length,
+      sourceEventSeqs: discussionRows.map((row) => row.seq),
+      agentSessionId: sessionId
+    }
+  });
+
+  await appendJobEvent(
+    jobId,
+    "discussion.synthesized",
+    {
+      artifactId: artifact.id,
+      synthesisPath,
+      roundCount: roundEvents.length,
+      outputCount: discussionRows.length
+    },
+    {
+      actor: "main-agent",
+      artifactId: artifact.id
+    }
+  );
+
+  return {
+    artifactId: artifact.id,
+    synthesisPath,
+    roundCount: roundEvents.length,
+    outputCount: discussionRows.length
+  };
+}
+
 export async function requestStageFix(input: {
   jobId: string;
   stageId: string;
@@ -1109,6 +1291,10 @@ export async function finalizeJob(jobId: string) {
   const stages = await getStagesForJob(jobId);
   const workdir = job.workdir ?? path.resolve(process.env.JOB_DATA_DIR ?? "data/jobs", jobId);
   const finalPath = path.join(workdir, "final", "final-answer.md");
+  const discussionSynthesis =
+    job.routingMode === "master_slave_discussion"
+      ? await getArtifactOrNull(`${jobId}-ART-DISCUSSION-SYNTHESIS`)
+      : null;
   const finalOutput = [
     `# ${jobId} Final Output`,
     "",
@@ -1118,6 +1304,10 @@ export async function finalizeJob(jobId: string) {
     "",
     "Completed stages:",
     ...stages.map((stage) => `- ${stage.stageIndex}. ${stage.name} (${stage.agentId})`),
+    "",
+    discussionSynthesis
+      ? ["Main-agent discussion synthesis:", "", discussionSynthesis.content ?? ""].join("\n")
+      : "No dedicated discussion synthesis artifact was required for this routing mode.",
     "",
     "Final owner: main-agent summarized the completed stage outputs.",
     "Next milestone: replace mock activities with real OpenClaw agent calls.",

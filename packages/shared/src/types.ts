@@ -76,6 +76,7 @@ export type ArtifactType =
   | "stage_summary"
   | "state_json"
   | "test_report"
+  | "discussion_synthesis"
   | "final_output"
   | "group_message"
   | "log";

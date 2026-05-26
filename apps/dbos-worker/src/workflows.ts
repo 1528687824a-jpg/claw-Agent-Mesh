@@ -40,6 +40,10 @@ const markJobWaitingForHuman = DBOS.registerStep(activities.markJobWaitingForHum
   name: "markJobWaitingForHuman",
   ...retryingStepConfig
 });
+const mainAgentSynthesizeDiscussion = DBOS.registerStep(activities.mainAgentSynthesizeDiscussion, {
+  name: "mainAgentSynthesizeDiscussion",
+  ...retryingStepConfig
+});
 const passStageAndHandoff = DBOS.registerStep(activities.passStageAndHandoff, {
   name: "passStageAndHandoff",
   ...retryingStepConfig
@@ -250,6 +254,10 @@ async function jobPipelineWorkflow(input: JobWorkflowInput) {
       jobId: input.jobId,
       status
     };
+  }
+
+  if (routingMode === "master_slave_discussion") {
+    await mainAgentSynthesizeDiscussion(input.jobId);
   }
 
   await finalizeJob(input.jobId);

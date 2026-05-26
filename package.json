@@ -8,6 +8,7 @@
     "dev:worker": "tsx apps/dbos-worker/src/worker.ts",
     "dev:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-dev.ps1",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-dev.ps1",
+    "smoke:m2-recovery": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-m2-recovery.ps1",
     "maintenance:cleanup-sessions": "tsx scripts/cleanup-expired-sessions.ts",
     "check": "tsc --noEmit"
   },

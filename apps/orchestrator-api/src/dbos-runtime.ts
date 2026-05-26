@@ -29,10 +29,10 @@ export async function launchDbos() {
   await launchPromise;
 }
 
-export async function startJobWorkflow(jobId: string) {
+export async function startJobWorkflow(jobId: string, workflowIdOverride?: string) {
   await launchDbos();
 
-  const workflowId = `job-${jobId}`;
+  const workflowId = workflowIdOverride ?? `job-${jobId}`;
   const handle = await DBOS.startWorkflow(JobPipelineWorkflow, {
     workflowID: workflowId
   })({ jobId });

@@ -1,5 +1,64 @@
 # Agent OpenClaw Context Checkpoint
 
+## 2026-05-26 M2 Hardening Checkpoint
+
+本轮复核结论：用户指出的主要问题是对的。M2 主体能跑，但还需要补崩溃恢复
+和 discussion 模式的 main-agent 收口。已完成以下加固：
+
+```text
+1. master_slave_discussion 现在新增 mainAgentSynthesizeDiscussion DBOS step。
+2. 该 step 读取 agent_events 讨论账本、discussion.round_completed 事件和各轮 stage output artifact。
+3. main-agent 通过 OpenClaw idempotent model_call 执行/复用 synthesis。
+4. 生成 artifact：<jobId>-ART-DISCUSSION-SYNTHESIS，type=discussion_synthesis。
+5. finalizeJob 会把 discussion synthesis 纳入 final output。
+6. classic_master_slave 当前确认是串行执行，不是并行；并行留作后续单独验证。
+7. model_calls 新增 failed_unknown_outcome 状态，人工确认后可解除 started 黑洞。
+8. 新增受 ADMIN_API_TOKEN 保护的 admin unstick endpoint：
+   POST /admin/model-calls/failed-unknown-outcome
+9. 新增可重复恢复冒烟脚本：npm run smoke:m2-recovery
+```
+
+M2 崩溃恢复补测已通过，均使用 `FEISHU_DRY_RUN=true` 和
+`OPENCLAW_AGENT_MODE=mock`：
+
+```text
+pipeline crash smoke:
+  hook=after-runStageAgent-stage-002-attempt-01
+  job=JOB-20260526-08CE74AE
+  result=succeeded
+  stages=3
+  attempts=3
+  reviews=0
+  stageAgentRequested=3
+  stageAgentCompleted=3
+  stageAgentReused=0
+  stage2OutputMessages=1
+
+master_slave_discussion crash smoke:
+  hook=after-runStageAgent-stage-002-attempt-01
+  job=JOB-20260526-B720C1B2
+  result=succeeded
+  stages=2
+  attempts=4
+  reviews=0
+  stageAgentRequested=4
+  stageAgentCompleted=4
+  stageAgentReused=0
+  discussionRounds=2
+  discussionMessages=4
+  synthesisEvents=1
+  synthesisArtifacts=1
+```
+
+非监督者模式质量门决策（先记录，M2.5 再实现）：
+
+```text
+pipeline：最终输出处加一道 test-agent 终检，不做每阶段检查。
+classic_master_slave：main-agent 是主合成者，后续加可选 final test-agent gate。
+master_slave_discussion：main-agent synthesis 必须做；synthesis 后加一道 final test-agent gate。
+all modes：后续加总 attempts / model calls / 成本预算上限。
+```
+
 ## 2026-05-26 M2 Routing Modes Checkpoint
 
 已完成 DBOS 编排内核的四种 routing mode 策略层：

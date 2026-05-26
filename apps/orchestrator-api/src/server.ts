@@ -1,7 +1,13 @@
 import "dotenv/config";
 import express from "express";
 import { z } from "zod";
-import { createJob, getJob, getJobByFeishuMessageId } from "../../../packages/db/src/jobs";
+import {
+  appendJobEvent,
+  createJob,
+  getJob,
+  getJobByFeishuMessageId
+} from "../../../packages/db/src/jobs";
+import { markModelCallFailedUnknownOutcome } from "../../../packages/db/src/model-calls";
 import { getJobDetails } from "../../../packages/db/src/pipeline";
 import { ROUTING_MODES } from "../../../packages/shared/src/types";
 import { launchDbos, startJobWorkflow } from "./dbos-runtime";
@@ -13,6 +19,29 @@ const createJobSchema = z.object({
   feishuChatId: z.string().optional(),
   feishuMessageId: z.string().optional()
 });
+
+const unstickModelCallSchema = z.object({
+  jobId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  reason: z.string().optional(),
+  restartWorkflow: z.boolean().optional().default(true)
+});
+
+function requireAdminToken(request: express.Request, response: express.Response) {
+  const expectedToken = process.env.ADMIN_API_TOKEN?.trim();
+  if (!expectedToken) {
+    response.status(403).json({ error: "admin_api_token_not_configured" });
+    return false;
+  }
+
+  const actualToken = request.header("x-admin-token")?.trim();
+  if (actualToken !== expectedToken) {
+    response.status(401).json({ error: "invalid_admin_token" });
+    return false;
+  }
+
+  return true;
+}
 
 function parseFeishuTextContent(content: unknown): string {
   if (typeof content !== "string") {
@@ -84,6 +113,57 @@ async function main() {
         jobId: job.id,
         routingMode: job.routingMode,
         status: "queued",
+        workflowId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/model-calls/failed-unknown-outcome", async (request, response, next) => {
+    try {
+      if (!requireAdminToken(request, response)) {
+        return;
+      }
+
+      const input = unstickModelCallSchema.parse(request.body);
+      const job = await getJob(input.jobId);
+      if (!job) {
+        response.status(404).json({ error: "job_not_found" });
+        return;
+      }
+
+      const modelCall = await markModelCallFailedUnknownOutcome({
+        idempotencyKey: input.idempotencyKey,
+        error: input.reason
+          ? `failed_unknown_outcome: ${input.reason}`
+          : "failed_unknown_outcome: manually marked by admin"
+      });
+
+      if (!modelCall) {
+        response.status(404).json({ error: "started_model_call_not_found" });
+        return;
+      }
+
+      await appendJobEvent(input.jobId, "tool.openclaw_agent_failed_unknown_outcome", {
+        modelCallId: modelCall.id,
+        idempotencyKey: modelCall.idempotencyKey,
+        reason: input.reason ?? null
+      }, {
+        actor: "admin",
+        stageId: modelCall.stageId
+      });
+
+      let workflowId: string | null = null;
+      if (input.restartWorkflow) {
+        const stamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
+        workflowId = await startJobWorkflow(input.jobId, `job-${input.jobId}-unstick-${stamp}`);
+      }
+
+      response.json({
+        ok: true,
+        modelCallId: modelCall.id,
+        status: modelCall.status,
         workflowId
       });
     } catch (error) {

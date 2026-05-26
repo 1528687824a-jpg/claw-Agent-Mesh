@@ -145,7 +145,87 @@ classic_master_slave:
 master_slave_discussion:
   Child agents run in a fixed two-round discussion loop, with visible
   discussion_handoff messages and discussion.round_completed events.
+  After the rounds finish, main-agent runs a dedicated
+  mainAgentSynthesizeDiscussion step over the agent_events ledger and stage
+  output artifacts. finalizeJob then includes that synthesis artifact in the
+  final output.
 ```
+
+Current quality-gate decision for the next milestone:
+
+```text
+supervisor_pipeline:
+  Keep the existing per-stage test-agent gate and 3-FAIL safety behavior.
+
+pipeline:
+  Add a final-only test-agent gate later. Do not test every stage, otherwise it
+  collapses back into supervisor_pipeline.
+
+classic_master_slave:
+  Keep main-agent as the primary synthesizer. Add an optional final test-agent
+  gate later, controlled by persisted job config.
+
+master_slave_discussion:
+  Keep main-agent synthesis mandatory. Add one test-agent final gate after the
+  synthesis later.
+
+all modes:
+  Add a persisted budget ceiling later, such as max total attempts or max model
+  calls, before enabling expensive real providers broadly.
+```
+
+## M2 Recovery Smoke Checks
+
+These were run locally with:
+
+```powershell
+$env:FEISHU_DRY_RUN='true'
+$env:OPENCLAW_AGENT_MODE='mock'
+$env:DBOS_TEST_CRASH_ONCE_AFTER='after-runStageAgent-stage-002-attempt-01'
+```
+
+Pipeline recovery check:
+
+```text
+jobId=JOB-20260526-08CE74AE
+crash point=after stage 2 runStageAgent checkpoint
+result=succeeded
+stages=3
+attempts=3
+reviews=0
+stageAgentRequested=3
+stageAgentCompleted=3
+stageAgentReused=0
+stage2OutputMessages=1
+```
+
+Discussion recovery check:
+
+```text
+jobId=JOB-20260526-B720C1B2
+crash point=after round 1 stage 2 runStageAgent checkpoint
+result=succeeded
+stages=2
+attempts=4
+reviews=0
+stageAgentRequested=4
+stageAgentCompleted=4
+stageAgentReused=0
+discussionRounds=2
+discussionMessages=4
+synthesisEvents=1
+synthesisArtifacts=1
+```
+
+Repeat both recovery checks with:
+
+```powershell
+npm run smoke:m2-recovery
+```
+
+The script restarts the local dev API with the crash hook enabled, creates one
+`pipeline` job and one `master_slave_discussion` job, verifies that the API
+actually crashed, restarts without the hook, then asserts the recovered counts.
 
 ## DBOS Checkpoints
 
@@ -174,6 +254,39 @@ instead of calling OpenClaw again.
 
 If a prior call is only `started` and has no completed result, the workflow
 throws instead of silently making a second ambiguous external call.
+
+If an operator confirms that a `started` call has an unknown external outcome,
+mark it explicitly as `failed_unknown_outcome`. That state is allowed to be
+restarted by `markModelCallStarted`, while plain `started` remains blocked.
+
+Admin API unstick path:
+
+```text
+POST /admin/model-calls/failed-unknown-outcome
+Header: x-admin-token: <ADMIN_API_TOKEN>
+Body:
+{
+  "jobId": "JOB-...",
+  "idempotencyKey": "JOB-...:JOB-...-STAGE-001:1:stage-agent",
+  "reason": "operator confirmed the original call outcome is unknown",
+  "restartWorkflow": true
+}
+```
+
+The endpoint is disabled unless `ADMIN_API_TOKEN` is set. When enabled, it
+marks the started model call as `failed_unknown_outcome` and, by default,
+starts a replacement DBOS workflow id for the same job.
+
+SQL-only fallback:
+
+```sql
+update agent.model_calls
+set status = 'failed_unknown_outcome',
+    error = 'failed_unknown_outcome: operator confirmed the original call outcome is unknown',
+    updated_at = now()
+where idempotency_key = '<idempotency-key>'
+  and status = 'started';
+```
 
 ## Crash Recovery Test Hook
 
