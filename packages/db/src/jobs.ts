@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  DEFAULT_DISCUSSION_ROUNDS,
   DEFAULT_MAX_MODEL_CALLS,
   DEFAULT_ROUTING_MODE,
   ROUTING_MODES,
@@ -25,6 +26,7 @@ function toJobRecord(row: any): JobRecord {
     routingMode: normalizeRoutingMode(row.routing_mode),
     maxModelCalls: row.max_model_calls ?? DEFAULT_MAX_MODEL_CALLS,
     classicFinalGateEnabled: row.classic_final_gate_enabled ?? false,
+    discussionRounds: row.discussion_rounds ?? DEFAULT_DISCUSSION_ROUNDS,
     status: row.status,
     workflowId: row.workflow_id,
     finalOutput: row.final_output,
@@ -58,8 +60,9 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
       routing_mode,
       max_model_calls,
       classic_final_gate_enabled,
+      discussion_rounds,
       status
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'created')
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'created')
     returning *`,
     [
       id,
@@ -70,7 +73,8 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
       input.rawPrompt,
       input.routingMode ?? DEFAULT_ROUTING_MODE,
       input.maxModelCalls ?? DEFAULT_MAX_MODEL_CALLS,
-      input.classicFinalGateEnabled ?? false
+      input.classicFinalGateEnabled ?? false,
+      input.discussionRounds ?? DEFAULT_DISCUSSION_ROUNDS
     ]
   );
 
@@ -78,7 +82,8 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
     requesterId: input.requesterId ?? null,
     routingMode: input.routingMode ?? DEFAULT_ROUTING_MODE,
     maxModelCalls: input.maxModelCalls ?? DEFAULT_MAX_MODEL_CALLS,
-    classicFinalGateEnabled: input.classicFinalGateEnabled ?? false
+    classicFinalGateEnabled: input.classicFinalGateEnabled ?? false,
+    discussionRounds: input.discussionRounds ?? DEFAULT_DISCUSSION_ROUNDS
   });
 
   return toJobRecord(result.rows[0]);

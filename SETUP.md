@@ -94,6 +94,7 @@ $body = @{
   routingMode = 'supervisor_pipeline'
   maxModelCalls = 20
   classicFinalGateEnabled = $false
+  discussionRounds = 2
   requesterId = 'local-test-user'
 } | ConvertTo-Json
 
@@ -148,8 +149,10 @@ classic_master_slave:
   false.
 
 master_slave_discussion:
-  Child agents run in a fixed two-round discussion loop, with visible
-  discussion_handoff messages and discussion.round_completed events.
+  Child agents run in a persisted discussion loop controlled by
+  agent.jobs.discussion_rounds / POST /jobs discussionRounds. The default is
+  2 rounds. Each round writes visible discussion_handoff messages and
+  discussion.round_completed events.
   After the rounds finish, main-agent runs a dedicated
   mainAgentSynthesizeDiscussion step over the agent_events ledger and stage
   output artifacts. M2.5 then runs one final test-agent gate over the synthesis
@@ -165,6 +168,11 @@ maxModelCalls:
 
 classicFinalGateEnabled:
   Optional final test-agent gate for classic_master_slave. Default: false.
+
+discussionRounds:
+  Persisted round count for master_slave_discussion. Default: 2. POST /jobs
+  accepts integer values from 1 through 10. The workflow reads it through a
+  checkpointed DBOS step before entering the discussion loop.
 ```
 
 ## M2 Recovery Smoke Checks
@@ -212,6 +220,23 @@ synthesisArtifacts=1
 finalTestEvents=1
 ```
 
+Latest repeatable script run after discussionRounds persistence:
+
+```text
+jobId=JOB-20260527-3233B7D7
+discussionRounds request/config=3
+result=succeeded
+stages=2
+attempts=6
+stageAgentRequested=6
+stageAgentCompleted=6
+stageAgentReused=0
+discussionRounds=3
+discussionMessages=6
+synthesisArtifacts=1
+finalTestEvents=1
+```
+
 Repeat both recovery checks with:
 
 ```powershell
@@ -219,8 +244,9 @@ npm run smoke:m2-recovery
 ```
 
 The script restarts the local dev API with the crash hook enabled, creates one
-`pipeline` job and one `master_slave_discussion` job, verifies that the API
-actually crashed, restarts without the hook, then asserts the recovered counts.
+`pipeline` job and one `master_slave_discussion` job. The discussion job sends
+`discussionRounds=3`, verifies that the API actually crashed, restarts without
+the hook, then asserts the recovered counts and persisted round config.
 
 M2.5 local quality/budget checks:
 

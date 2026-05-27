@@ -19,6 +19,7 @@ const statements = [
   `alter table agent.jobs add column if not exists routing_mode text not null default 'supervisor_pipeline'`,
   `alter table agent.jobs add column if not exists max_model_calls int not null default 20`,
   `alter table agent.jobs add column if not exists classic_final_gate_enabled boolean not null default false`,
+  `alter table agent.jobs add column if not exists discussion_rounds int not null default 2`,
   `alter table agent.jobs add column if not exists completed_at timestamptz`,
   `alter table agent.jobs add column if not exists archived_at timestamptz`,
   `alter table agent.jobs add column if not exists retention_until timestamptz`,

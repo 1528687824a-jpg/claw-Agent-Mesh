@@ -17,6 +17,7 @@ const createJobSchema = z.object({
   routingMode: z.enum(ROUTING_MODES).optional(),
   maxModelCalls: z.number().int().min(1).max(100).optional(),
   classicFinalGateEnabled: z.boolean().optional(),
+  discussionRounds: z.number().int().min(1).max(10).optional(),
   requesterId: z.string().optional(),
   feishuChatId: z.string().optional(),
   feishuMessageId: z.string().optional()
@@ -116,6 +117,7 @@ async function main() {
         routingMode: job.routingMode,
         maxModelCalls: job.maxModelCalls,
         classicFinalGateEnabled: job.classicFinalGateEnabled,
+        discussionRounds: job.discussionRounds,
         status: "queued",
         workflowId
       });
@@ -233,6 +235,7 @@ async function main() {
         routingMode: job.routingMode,
         maxModelCalls: job.maxModelCalls,
         classicFinalGateEnabled: job.classicFinalGateEnabled,
+        discussionRounds: job.discussionRounds,
         workflowId
       });
     } catch (error) {

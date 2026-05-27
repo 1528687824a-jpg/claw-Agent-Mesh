@@ -55,6 +55,7 @@ function Invoke-RecoverySmoke {
     [int]$ExpectedReviews,
     [int]$ExpectedDiscussionRounds,
     [int]$ExpectedDiscussionMessages,
+    [int]$DiscussionRoundsConfig,
     [int]$ExpectedSynthesisArtifacts,
     [int]$ExpectedFinalTestEvents
   )
@@ -65,7 +66,11 @@ function Invoke-RecoverySmoke {
     rawPrompt = $Prompt
     requesterId = "m2-recovery-smoke"
     routingMode = $Mode
-  } | ConvertTo-Json
+  }
+  if ($DiscussionRoundsConfig -gt 0) {
+    $body["discussionRounds"] = $DiscussionRoundsConfig
+  }
+  $body = $body | ConvertTo-Json
 
   $created = Invoke-RestMethod -Uri "http://localhost:3000/jobs" -Method Post -ContentType "application/json" -Body $body
   $jobId = $created.jobId
@@ -117,6 +122,7 @@ function Invoke-RecoverySmoke {
     stageAgentReused = $stageAgentReused
     discussionRounds = $discussionRounds
     discussionMessages = $discussionMessages
+    configuredDiscussionRounds = $details.job.discussion_rounds
     synthesisArtifacts = $synthesisArtifacts
     finalTestEvents = $finalTestEvents
   }
@@ -131,6 +137,7 @@ function Invoke-RecoverySmoke {
   if ($result.stageAgentReused -ne 0) { throw "$Mode unexpectedly reused stage-agent calls after checkpoint crash" }
   if ($result.discussionRounds -ne $ExpectedDiscussionRounds) { throw "$Mode discussion round count was $($result.discussionRounds)" }
   if ($result.discussionMessages -ne $ExpectedDiscussionMessages) { throw "$Mode discussion message count was $($result.discussionMessages)" }
+  if ($DiscussionRoundsConfig -gt 0 -and $result.configuredDiscussionRounds -ne $DiscussionRoundsConfig) { throw "$Mode configured discussion rounds was $($result.configuredDiscussionRounds)" }
   if ($result.synthesisArtifacts -ne $ExpectedSynthesisArtifacts) { throw "$Mode synthesis artifact count was $($result.synthesisArtifacts)" }
   if ($result.finalTestEvents -ne $ExpectedFinalTestEvents) { throw "$Mode final test event count was $($result.finalTestEvents)" }
 
@@ -146,6 +153,7 @@ $results += Invoke-RecoverySmoke `
   -ExpectedReviews 0 `
   -ExpectedDiscussionRounds 0 `
   -ExpectedDiscussionMessages 0 `
+  -DiscussionRoundsConfig 0 `
   -ExpectedSynthesisArtifacts 0 `
   -ExpectedFinalTestEvents 1
 
@@ -153,10 +161,11 @@ $results += Invoke-RecoverySmoke `
   -Mode "master_slave_discussion" `
   -Prompt "research current durable workflow recovery patterns and write a short summary" `
   -ExpectedStages 2 `
-  -ExpectedAttempts 4 `
+  -ExpectedAttempts 6 `
   -ExpectedReviews 0 `
-  -ExpectedDiscussionRounds 2 `
-  -ExpectedDiscussionMessages 4 `
+  -ExpectedDiscussionRounds 3 `
+  -ExpectedDiscussionMessages 6 `
+  -DiscussionRoundsConfig 3 `
   -ExpectedSynthesisArtifacts 1 `
   -ExpectedFinalTestEvents 1
 

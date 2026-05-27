@@ -21,6 +21,7 @@ export type RoutingMode = (typeof ROUTING_MODES)[number];
 
 export const DEFAULT_ROUTING_MODE: RoutingMode = "supervisor_pipeline";
 export const DEFAULT_MAX_MODEL_CALLS = 20;
+export const DEFAULT_DISCUSSION_ROUNDS = 2;
 
 export type JobRecord = {
   id: string;
@@ -29,6 +30,7 @@ export type JobRecord = {
   routingMode: RoutingMode;
   maxModelCalls: number;
   classicFinalGateEnabled: boolean;
+  discussionRounds: number;
   status: JobStatus;
   workflowId: string | null;
   finalOutput: string | null;
@@ -50,6 +52,7 @@ export type CreateJobInput = {
   routingMode?: RoutingMode;
   maxModelCalls?: number;
   classicFinalGateEnabled?: boolean;
+  discussionRounds?: number;
   requesterId?: string;
   feishuChatId?: string;
   feishuMessageId?: string;

@@ -1,5 +1,66 @@
 # Agent OpenClaw Context Checkpoint
 
+## 2026-05-27 discussionRounds Persistence Checkpoint
+
+Implemented and verified `discussionRounds` as persisted job configuration:
+
+```text
+1. packages/shared/src/types.ts:
+   - DEFAULT_DISCUSSION_ROUNDS=2
+   - JobRecord.discussionRounds
+   - CreateJobInput.discussionRounds
+2. packages/db/src/migrate.ts:
+   - agent.jobs.discussion_rounds int not null default 2
+3. packages/db/src/jobs.ts:
+   - createJob persists discussion_rounds
+   - toJobRecord returns discussionRounds
+   - job.created event includes discussionRounds
+4. apps/orchestrator-api/src/server.ts:
+   - POST /jobs accepts discussionRounds int 1..10
+   - POST /jobs and Feishu webhook responses include discussionRounds
+5. apps/dbos-worker/src/activities.ts:
+   - getJobDiscussionRounds DBOS step reads persisted value
+   - emits discussion.round_count_selected
+6. apps/dbos-worker/src/workflows.ts:
+   - removed DISCUSSION_ROUND_COUNT constant
+   - master_slave_discussion loop uses the checkpointed step value
+7. scripts/smoke-m2-recovery.ps1:
+   - discussion recovery case now sends discussionRounds=3
+   - asserts persisted config and 3-round recovery counts
+```
+
+Verification:
+
+```text
+npm run check
+  passed
+
+git diff --check
+  passed; only Git CRLF warnings printed
+
+npm run smoke:m2-recovery
+  passed
+
+pipeline:
+  job=JOB-20260527-260F9CAC
+  result=succeeded
+  attempts=3
+  finalTestEvents=1
+
+master_slave_discussion:
+  job=JOB-20260527-3233B7D7
+  requested/configured discussionRounds=3
+  result=succeeded
+  stages=2
+  attempts=6
+  discussionRounds=3
+  discussionMessages=6
+  synthesisArtifacts=1
+  finalTestEvents=1
+```
+
+Current next step: Feishu public HTTPS webhook setup. The discussion round hard-code is no longer current truth.
+
 ## 2026-05-26 M2.5 Quality Gates And Budget Checkpoint
 
 已完成非监督模式质量门和通用 model-call 预算上限：
@@ -78,7 +139,7 @@ master_slave_discussion:
   finalTestEvents=1
 ```
 
-仍未做：discussion_rounds 持久化配置。当前 discussion 轮次仍是 workflow 常量 2。
+已更新：discussion_rounds 持久化配置已于 2026-05-27 完成；当前 discussion 轮次不再是 workflow 常量 2。
 
 ## 2026-05-26 M2 Hardening Checkpoint
 

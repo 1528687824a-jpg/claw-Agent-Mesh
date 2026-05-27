@@ -8,8 +8,6 @@ import { WORKFLOW_NAME } from "../../../packages/shared/src/constants";
 import * as activities from "./activities";
 import { maybeCrashOnce } from "./test-crash";
 
-const DISCUSSION_ROUND_COUNT = 2;
-
 const retryingStepConfig = {
   retriesAllowed: true,
   intervalSeconds: 1,
@@ -38,6 +36,10 @@ const createPipelinePlan = DBOS.registerStep(activities.createPipelinePlan, {
 });
 const getJobRoutingMode = DBOS.registerStep(activities.getJobRoutingMode, {
   name: "getJobRoutingMode",
+  ...retryingStepConfig
+});
+const getJobDiscussionRounds = DBOS.registerStep(activities.getJobDiscussionRounds, {
+  name: "getJobDiscussionRounds",
   ...retryingStepConfig
 });
 const markJobRunning = DBOS.registerStep(activities.markJobRunning, {
@@ -239,8 +241,8 @@ async function runClassicMasterSlave(jobId: string, stages: StageRecord[]) {
   return "succeeded";
 }
 
-async function runMasterSlaveDiscussion(jobId: string, stages: StageRecord[]) {
-  for (let roundNo = 1; roundNo <= DISCUSSION_ROUND_COUNT; roundNo++) {
+async function runMasterSlaveDiscussion(jobId: string, stages: StageRecord[], discussionRounds: number) {
+  for (let roundNo = 1; roundNo <= discussionRounds; roundNo++) {
     for (const [index, stage] of stages.entries()) {
       const nextStage = stages.length > 1 ? stages[(index + 1) % stages.length] : null;
       if (!(await hasModelCallBudget(jobId, "stage-agent", stage.agentId))) {
@@ -285,7 +287,7 @@ async function runRoutingMode(jobId: string, routingMode: RoutingMode, stages: S
     case "classic_master_slave":
       return runClassicMasterSlave(jobId, stages);
     case "master_slave_discussion":
-      return runMasterSlaveDiscussion(jobId, stages);
+      return runMasterSlaveDiscussion(jobId, stages, await getJobDiscussionRounds(jobId));
     default:
       throw new Error(`Unsupported routing mode: ${routingMode}`);
   }

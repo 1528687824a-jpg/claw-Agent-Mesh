@@ -46,7 +46,11 @@ import type {
   StageRunResult,
   TestReviewResult
 } from "../../../packages/shared/src/types";
-import { DEFAULT_MAX_MODEL_CALLS, DEFAULT_ROUTING_MODE } from "../../../packages/shared/src/types";
+import {
+  DEFAULT_DISCUSSION_ROUNDS,
+  DEFAULT_MAX_MODEL_CALLS,
+  DEFAULT_ROUTING_MODE
+} from "../../../packages/shared/src/types";
 import { sendFeishuTextMessage } from "./adapters/feishu";
 import { runOpenClawAgent, type OpenClawRunResult } from "./adapters/openclaw";
 import { maybeCrashOnce } from "./test-crash";
@@ -312,6 +316,17 @@ export async function getJobRoutingMode(jobId: string): Promise<RoutingMode> {
   const routingMode = job.routingMode ?? DEFAULT_ROUTING_MODE;
   await appendJobEvent(jobId, "main.routing_mode_selected", { routingMode });
   return routingMode;
+}
+
+export async function getJobDiscussionRounds(jobId: string): Promise<number> {
+  const job = await getJob(jobId);
+  if (!job) {
+    throw new Error(`Job not found: ${jobId}`);
+  }
+
+  const discussionRounds = job.discussionRounds ?? DEFAULT_DISCUSSION_ROUNDS;
+  await appendJobEvent(jobId, "discussion.round_count_selected", { discussionRounds });
+  return discussionRounds;
 }
 
 export async function enforceModelCallBudget(input: {
