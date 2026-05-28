@@ -1,5 +1,55 @@
 # Agent OpenClaw Context Checkpoint
 
+## 2026-05-28 Project File Organization Checkpoint
+
+Repository files were organized for long-term platform development and future
+GitHub/open-source publishing.
+
+Current top-level ownership:
+
+```text
+apps/                  API and DBOS worker platform source.
+packages/              Shared DB and type packages.
+scripts/               Dev/start/smoke/maintenance scripts.
+platform-assets/       OpenClaw agent templates and manual vendor workarounds.
+docs/                  Project structure, boundaries, agent setup notes, historical docs.
+README.md              GitHub entry point and boundary summary.
+SETUP.md               Local setup and smoke-test guide.
+CONTEXT.md             Agent-facing project checkpoint.
+```
+
+Moved/created files:
+
+```text
+openclaw/ -> platform-assets/openclaw-agent-templates/
+scripts/patch-openclaw-ark-media.ps1 -> platform-assets/vendor-workarounds/openclaw/patch-ark-media.ps1
+OPENCLAW_AGENT_CREATION.md -> docs/openclaw-agent-creation.md
+openclaw-feishu-temporal-agent-pipeline-plan.md -> docs/historical/openclaw-feishu-temporal-agent-pipeline-plan.md
+README.md added
+docs/PROJECT_STRUCTURE.md added
+docs/BOUNDARIES.md added
+```
+
+Important boundary decision:
+
+```text
+OpenClaw/ClawPanel is an external runtime/product. Platform code must call it
+through apps/dbos-worker/src/adapters/openclaw.ts and environment-configured
+CLI paths. Prompt/config templates belong under platform-assets/. Manual vendor
+workarounds are isolated under platform-assets/vendor-workarounds/ and must
+not become the default downloadable-user install path.
+```
+
+Verification:
+
+```text
+commit=7a58f6b Organize platform project files
+npm run check passed
+git diff --check passed, with only CRLF warnings
+old repo-local openclaw/agents and openclaw/config references cleared
+git status clean after commit
+```
+
 ## 2026-05-27 Feishu Webhook Readiness Checkpoint
 
 Added local Feishu webhook smoke coverage before public HTTPS ingress:
