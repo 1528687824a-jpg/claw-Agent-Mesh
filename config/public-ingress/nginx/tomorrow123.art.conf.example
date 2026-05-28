@@ -1,0 +1,57 @@
+# Example Nginx site for Agent OpenClaw Feishu public ingress.
+# Copy to the VPS (for example /etc/nginx/sites-available/tomorrow123.art),
+# replace placeholders locally, and do not commit real secrets.
+
+server {
+    listen 80;
+    server_name {{DOMAIN}};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 308 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name {{DOMAIN}};
+
+    ssl_certificate {{CERT_FULLCHAIN_PATH}};
+    ssl_certificate_key {{CERT_PRIVKEY_PATH}};
+
+    client_max_body_size 1m;
+
+    # Feishu event callbacks are POST requests. The public surface is
+    # intentionally narrow: expose only the webhook path.
+    location = /webhooks/feishu/events {
+        if ($request_method != POST) {
+            return 404;
+        }
+
+        proxy_pass http://127.0.0.1:{{FRP_REMOTE_API_PORT}}/webhooks/feishu/events;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 75s;
+        proxy_read_timeout 75s;
+    }
+
+    # Optional VPS-only health page. Keep it simple and avoid exposing app APIs.
+    location = /health {
+        default_type application/json;
+        return 200 '{"status":"ok"}';
+    }
+
+    location / {
+        return 404;
+    }
+}
+

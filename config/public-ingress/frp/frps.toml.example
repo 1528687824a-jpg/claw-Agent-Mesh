@@ -1,0 +1,19 @@
+# frps template for the VPS.
+# Replace placeholders locally. Do not commit the real auth token.
+
+bindPort = {{FRP_BIND_PORT}}
+
+auth.method = "token"
+auth.token = "{{FRP_AUTH_TOKEN}}"
+
+transport.tls.force = true
+
+# Only allow the remote TCP port used by Nginx -> frp -> local API.
+allowPorts = [
+  { start = {{FRP_REMOTE_API_PORT}}, end = {{FRP_REMOTE_API_PORT}} }
+]
+
+# If your frps version supports loopback-only proxy binding, prefer enabling it
+# so the remote API port is reachable only from local Nginx on the VPS.
+# proxyBindAddr = "127.0.0.1"
+

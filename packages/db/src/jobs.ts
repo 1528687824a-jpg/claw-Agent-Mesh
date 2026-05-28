@@ -3,8 +3,10 @@ import {
   DEFAULT_DISCUSSION_ROUNDS,
   DEFAULT_MAX_MODEL_CALLS,
   DEFAULT_ROUTING_MODE,
+  INGRESS_ORIGINS,
   ROUTING_MODES,
   type CreateJobInput,
+  type IngressOrigin,
   type JobRecord,
   type RoutingMode,
   type JobStatus
@@ -18,10 +20,17 @@ function normalizeRoutingMode(value: unknown): RoutingMode {
     : DEFAULT_ROUTING_MODE;
 }
 
+function normalizeIngressOrigin(value: unknown): IngressOrigin {
+  return typeof value === "string" && (INGRESS_ORIGINS as readonly string[]).includes(value)
+    ? (value as IngressOrigin)
+    : "http";
+}
+
 function toJobRecord(row: any): JobRecord {
   return {
     id: row.id,
     sessionId: row.session_id ?? row.id,
+    ingressOrigin: normalizeIngressOrigin(row.ingress_origin),
     rawPrompt: row.raw_prompt,
     routingMode: normalizeRoutingMode(row.routing_mode),
     maxModelCalls: row.max_model_calls ?? DEFAULT_MAX_MODEL_CALLS,
@@ -56,13 +65,14 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
       feishu_chat_id,
       feishu_message_id,
       requester_id,
+      ingress_origin,
       raw_prompt,
       routing_mode,
       max_model_calls,
       classic_final_gate_enabled,
       discussion_rounds,
       status
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'created')
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'created')
     returning *`,
     [
       id,
@@ -70,6 +80,7 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
       input.feishuChatId ?? null,
       input.feishuMessageId ?? null,
       input.requesterId ?? null,
+      input.ingressOrigin ?? "http",
       input.rawPrompt,
       input.routingMode ?? DEFAULT_ROUTING_MODE,
       input.maxModelCalls ?? DEFAULT_MAX_MODEL_CALLS,
@@ -80,6 +91,7 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
 
   await appendJobEvent(id, "job.created", {
     requesterId: input.requesterId ?? null,
+    ingressOrigin: input.ingressOrigin ?? "http",
     routingMode: input.routingMode ?? DEFAULT_ROUTING_MODE,
     maxModelCalls: input.maxModelCalls ?? DEFAULT_MAX_MODEL_CALLS,
     classicFinalGateEnabled: input.classicFinalGateEnabled ?? false,

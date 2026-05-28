@@ -209,6 +209,14 @@ export async function setGroupMessageFeishuId(input: {
   );
 }
 
+export async function getGroupMessagesForJob(jobId: string): Promise<GroupMessageRecord[]> {
+  const result = await pool.query(
+    `select * from agent.group_messages where job_id = $1 order by created_at`,
+    [jobId]
+  );
+  return result.rows.map(toGroupMessageRecord);
+}
+
 export async function createPipelineStages(
   jobId: string,
   definitions: StageDefinition[],

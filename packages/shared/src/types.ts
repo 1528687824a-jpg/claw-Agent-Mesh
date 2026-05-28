@@ -23,9 +23,14 @@ export const DEFAULT_ROUTING_MODE: RoutingMode = "supervisor_pipeline";
 export const DEFAULT_MAX_MODEL_CALLS = 20;
 export const DEFAULT_DISCUSSION_ROUNDS = 2;
 
+export const INGRESS_ORIGINS = ["http", "feishu", "slack", "cli"] as const;
+
+export type IngressOrigin = (typeof INGRESS_ORIGINS)[number];
+
 export type JobRecord = {
   id: string;
   sessionId: string;
+  ingressOrigin: IngressOrigin;
   rawPrompt: string;
   routingMode: RoutingMode;
   maxModelCalls: number;
@@ -49,6 +54,7 @@ export type JobRecord = {
 
 export type CreateJobInput = {
   rawPrompt: string;
+  ingressOrigin?: IngressOrigin;
   routingMode?: RoutingMode;
   maxModelCalls?: number;
   classicFinalGateEnabled?: boolean;
@@ -153,6 +159,61 @@ export type GroupMessageRecord = {
   feishuMessageId: string | null;
   createdAt: string;
 };
+
+export type OutboundMessage = {
+  groupMessageId: string;
+  jobId: string;
+  stageId: string | null;
+  ingressOrigin: IngressOrigin;
+  senderAgentId: string;
+  mentionAgentId: string | null;
+  messageType: GroupMessageType;
+  content: string;
+  artifactId: string | null;
+  feishuChatId: string | null;
+  feishuMessageId: string | null;
+};
+
+export type DeliveryResult =
+  | {
+      adapter: string;
+      mode: "available";
+      messageId: string;
+    }
+  | {
+      adapter: string;
+      mode: "dry_run";
+      messageId: string;
+      reason: string;
+    }
+  | {
+      adapter: string;
+      mode: "sent";
+      messageId: string;
+      externalMessageId: string;
+    }
+  | {
+      adapter: string;
+      mode: "skipped";
+      messageId: string;
+      reason: string;
+    };
+
+export type EgressContext = {
+  env: NodeJS.ProcessEnv;
+};
+
+export interface EgressAdapter {
+  name: IngressOrigin;
+  isEnabled(env: NodeJS.ProcessEnv): boolean;
+  deliver(message: OutboundMessage, context: EgressContext): Promise<DeliveryResult>;
+}
+
+export interface IngressAdapter<App = unknown, Deps = unknown> {
+  name: IngressOrigin;
+  isEnabled(env: NodeJS.ProcessEnv): boolean;
+  mount(app: App, deps: Deps): void;
+}
 
 export type AgentEventRecord = {
   id: string;

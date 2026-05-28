@@ -1,0 +1,17 @@
+[Unit]
+Description=Agent OpenClaw frps public ingress
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/frps -c /etc/frp/agent-openclaw-frps.toml
+Restart=always
+RestartSec=5
+User=frp
+Group=frp
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+

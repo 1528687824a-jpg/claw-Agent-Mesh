@@ -29,7 +29,8 @@ orchestrator-api
   -> DBOS workflow library
   -> Postgres
   -> OpenClaw adapter
-  -> Feishu display adapter
+  -> HTTP core ingress/egress
+  -> optional Feishu ingress/egress adapter
 ```
 
 Temporal Server and Temporal UI are no longer part of the local dev stack.
@@ -121,6 +122,7 @@ $body = @{
 $response = Invoke-RestMethod -Uri 'http://localhost:3000/jobs' -Method Post -ContentType 'application/json' -Body $body
 $response
 Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($response.jobId)"
+Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($response.jobId)/messages"
 Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($response.jobId)/details"
 ```
 
@@ -268,6 +270,31 @@ The script restarts the local dev API with the crash hook enabled, creates one
 `discussionRounds=3`, verifies that the API actually crashed, restarts without
 the hook, then asserts the recovered counts and persisted round config.
 
+## HTTP-Only Product Smoke
+
+The core product ingress is HTTP and must work without Feishu credentials:
+
+```powershell
+npm run smoke:http-only
+```
+
+The script starts the local dev stack with:
+
+```text
+FEISHU_ADAPTER_ENABLED=false
+FEISHU_DRY_RUN=true
+OPENCLAW_AGENT_MODE=mock
+```
+
+It verifies:
+
+```text
+1. POST /jobs creates an HTTP-origin job.
+2. The job reaches succeeded in mock mode.
+3. GET /jobs/:jobId/messages returns the visible message chain.
+4. No Feishu message id is attached to the HTTP-only job.
+```
+
 M2.5 local quality/budget checks:
 
 ```text
@@ -361,11 +388,11 @@ Restart the API without the variable set. The first hook should skip the
 completed step; the second hook should rerun the step but reuse the
 `agent.model_calls` record instead of calling OpenClaw again.
 
-## Feishu Webhook
+## Optional Feishu Webhook
 
-Feishu is still only the human entrypoint and visible display screen. Real
+Feishu is an optional ingress/egress adapter and visible display screen. Real
 agent-to-agent handoff is controlled locally by DBOS/Postgres, not by Feishu
-mentions.
+mentions. The core HTTP product path does not require Feishu credentials.
 
 ```text
 POST http://localhost:3000/webhooks/feishu/events
@@ -428,6 +455,17 @@ Feishu
 
 Expose only the webhook path through Nginx. Do not publish `/jobs`,
 `/jobs/:jobId/details`, or `/admin/*` to the public internet.
+
+Detailed deployment guide and templates:
+
+```text
+docs/feishu-public-ingress.md
+config/public-ingress/nginx/tomorrow123.art.conf.example
+config/public-ingress/frp/frps.toml.example
+config/public-ingress/frp/frpc.toml.example
+config/public-ingress/systemd/frps-agent-openclaw.service.example
+config/public-ingress/systemd/frpc-agent-openclaw.service.example
+```
 
 ## OpenClaw Runtime Mode
 

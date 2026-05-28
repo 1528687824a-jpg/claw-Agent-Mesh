@@ -22,7 +22,6 @@ import {
   markStageFixing,
   markStageWaitingForHuman,
   saveTestReview,
-  setGroupMessageFeishuId,
   setNextStageInput,
   startStageAttempt
 } from "../../../packages/db/src/pipeline";
@@ -51,8 +50,8 @@ import {
   DEFAULT_MAX_MODEL_CALLS,
   DEFAULT_ROUTING_MODE
 } from "../../../packages/shared/src/types";
-import { sendFeishuTextMessage } from "./adapters/feishu";
 import { runOpenClawAgent, type OpenClawRunResult } from "./adapters/openclaw";
+import { deliverOutboundMessage } from "./egress/dispatcher";
 import { maybeCrashOnce } from "./test-crash";
 
 type OpenClawActionType =
@@ -233,72 +232,19 @@ async function postGroupMessage(input: {
   const job = await getJob(input.jobId);
   const groupMessage = await createGroupMessage(input);
 
-  if (groupMessage.feishuMessageId) {
-    await appendJobEvent(
-      input.jobId,
-      "group.message_delivery_skipped",
-      {
-        messageId: groupMessage.id,
-        reason: "already_delivered",
-        feishuMessageId: groupMessage.feishuMessageId
-      },
-      {
-        actor: "feishu-gateway",
-        stageId: input.stageId ?? null,
-        groupMessageId: groupMessage.id,
-        feishuMessageId: groupMessage.feishuMessageId
-      }
-    );
-    return groupMessage;
-  }
-
-  try {
-    const result = await sendFeishuTextMessage({
-      chatId: job?.feishuChatId,
-      senderAgentId: input.senderAgentId,
-      mentionAgentId: input.mentionAgentId,
-      text: input.content
-    });
-
-    if (result.mode === "sent") {
-      await setGroupMessageFeishuId({
-        groupMessageId: groupMessage.id,
-        jobId: input.jobId,
-        feishuMessageId: result.feishuMessageId
-      });
-    } else {
-      await appendJobEvent(
-        input.jobId,
-        "group.message_dry_run",
-        {
-          messageId: groupMessage.id,
-          reason: result.reason,
-          senderAgentId: result.senderAgentId,
-          mentionAgentId: input.mentionAgentId ?? null
-        },
-        {
-          actor: "feishu-gateway",
-          stageId: input.stageId ?? null,
-          groupMessageId: groupMessage.id
-        }
-      );
-    }
-  } catch (error) {
-    await appendJobEvent(
-      input.jobId,
-      "group.message_delivery_failed",
-      {
-        messageId: groupMessage.id,
-        error: error instanceof Error ? error.message : String(error)
-      },
-      {
-        actor: "feishu-gateway",
-        stageId: input.stageId ?? null,
-        groupMessageId: groupMessage.id
-      }
-    );
-    throw error;
-  }
+  await deliverOutboundMessage({
+    groupMessageId: groupMessage.id,
+    jobId: groupMessage.jobId,
+    stageId: groupMessage.stageId,
+    ingressOrigin: job?.ingressOrigin ?? "http",
+    senderAgentId: groupMessage.senderAgentId,
+    mentionAgentId: groupMessage.mentionAgentId,
+    messageType: groupMessage.messageType,
+    content: groupMessage.content,
+    artifactId: groupMessage.artifactId,
+    feishuChatId: job?.feishuChatId ?? null,
+    feishuMessageId: groupMessage.feishuMessageId
+  });
 
   return groupMessage;
 }

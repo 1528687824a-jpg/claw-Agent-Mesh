@@ -1,0 +1,15 @@
+[Unit]
+Description=Agent OpenClaw frpc local tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/frpc -c /etc/frp/agent-openclaw-frpc.toml
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+

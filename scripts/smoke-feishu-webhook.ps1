@@ -216,6 +216,7 @@ $created = Invoke-Webhook -Body $normalBody
 Assert-Equal -Actual $created.StatusCode -Expected 201 -Message "normal message status"
 Assert-Equal -Actual $created.Body.ok -Expected $true -Message "normal message ok"
 Assert-Truthy -Value $created.Body.jobId -Message "normal message jobId missing"
+Assert-Equal -Actual $created.Body.ingressOrigin -Expected "feishu" -Message "normal message ingress origin"
 Assert-Equal -Actual $created.Body.routingMode -Expected "supervisor_pipeline" -Message "default routing mode"
 Assert-Equal -Actual $created.Body.maxModelCalls -Expected 20 -Message "default max model calls"
 Assert-Equal -Actual $created.Body.classicFinalGateEnabled -Expected $false -Message "default classic final gate"
@@ -228,6 +229,7 @@ Assert-Equal -Actual $duplicate.Body.jobId -Expected $created.Body.jobId -Messag
 
 $job = Wait-ForTerminalStatus -JobId $created.Body.jobId
 Assert-Equal -Actual $job.status -Expected "succeeded" -Message "created job terminal status"
+Assert-Equal -Actual $job.ingressOrigin -Expected "feishu" -Message "job ingress origin"
 Assert-Equal -Actual $job.feishuMessageId -Expected $messageId -Message "job feishu message id"
 Assert-Equal -Actual $job.discussionRounds -Expected 2 -Message "job discussion rounds"
 

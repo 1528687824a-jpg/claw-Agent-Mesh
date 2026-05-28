@@ -16,6 +16,7 @@ const statements = [
   )`,
   `alter table agent.jobs add column if not exists workdir text`,
   `alter table agent.jobs add column if not exists session_id text`,
+  `alter table agent.jobs add column if not exists ingress_origin text not null default 'http'`,
   `alter table agent.jobs add column if not exists routing_mode text not null default 'supervisor_pipeline'`,
   `alter table agent.jobs add column if not exists max_model_calls int not null default 20`,
   `alter table agent.jobs add column if not exists classic_final_gate_enabled boolean not null default false`,
@@ -153,6 +154,8 @@ const statements = [
     on agent.agent_events(stage_id, seq)`,
   `create index if not exists jobs_status_created_at_idx
     on agent.jobs(status, created_at)`,
+  `create index if not exists jobs_ingress_origin_created_at_idx
+    on agent.jobs(ingress_origin, created_at)`,
   `create index if not exists jobs_retention_until_cleanup_status_idx
     on agent.jobs(retention_until, cleanup_status)
     where archived_at is not null`,

@@ -23,6 +23,7 @@ For details, read:
 ```text
 docs/PROJECT_STRUCTURE.md
 docs/BOUNDARIES.md
+docs/feishu-public-ingress.md
 SETUP.md
 ```
 
@@ -30,8 +31,16 @@ SETUP.md
 
 ```powershell
 npm run check
+npm run smoke:http-only
 npm run smoke:feishu-webhook
 npm run smoke:m2-recovery
+```
+
+Private/reference Feishu public ingress helpers:
+
+```powershell
+npm run prepare:public-ingress
+npm run smoke:feishu-public
 ```
 
 ## Boundary Rule

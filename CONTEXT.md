@@ -1,5 +1,346 @@
 # Agent OpenClaw Context Checkpoint
 
+## Standing User Workflow Rule
+
+```text
+After each completed task, Codex must:
+1. update the relevant context/memory files;
+2. tell the user the next several tasks in execution order.
+
+This rule was confirmed by the user on 2026-05-28 and applies to subsequent
+work on this project unless the user changes it.
+```
+
+## 2026-05-28 Stage 1.1 Adapter Abstraction Checkpoint
+
+Stage 1.1 is implemented: HTTP is now the core ingress/egress path and Feishu
+is an optional adapter/plugin.
+
+Code changes:
+
+```text
+1. packages/shared/src/types.ts
+   - added INGRESS_ORIGINS, IngressOrigin, IngressAdapter, EgressAdapter,
+     OutboundMessage, DeliveryResult.
+2. packages/db/src/migrate.ts
+   - added agent.jobs.ingress_origin text not null default 'http'.
+3. packages/db/src/jobs.ts
+   - createJob persists ingressOrigin; JobRecord exposes ingressOrigin.
+4. apps/orchestrator-api/src/adapters/
+   - added HTTP ingress adapter for POST /jobs.
+   - added Feishu ingress adapter for POST /webhooks/feishu/events.
+   - Feishu adapter is disabled when FEISHU_ADAPTER_ENABLED=false and otherwise
+     enabled when Feishu-related env is present.
+5. apps/orchestrator-api/src/server.ts
+   - mounts enabled ingress adapters.
+   - added GET /jobs/:jobId/messages for HTTP egress consumption.
+6. apps/dbos-worker/src/egress/
+   - added EgressDispatcher, HttpEgressAdapter, FeishuEgressAdapter.
+   - worker group-message delivery now routes by job.ingressOrigin.
+7. scripts/smoke-http-only-end-to-end.ps1
+   - added HTTP-only smoke with FEISHU_ADAPTER_ENABLED=false.
+8. scripts/smoke-feishu-webhook.ps1
+   - now asserts Feishu-created jobs have ingressOrigin=feishu.
+9. README.md / SETUP.md
+   - updated product smoke order and documented HTTP-only core path.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm run smoke:http-only -> passed
+  job=JOB-20260528-7153FEB0
+  terminalStatus=succeeded
+  ingressOrigin=http
+  messageCount=4
+  finalMessageCount=2
+  Feishu adapter disabled and no Feishu message id attached.
+
+npm run smoke:feishu-webhook -> passed
+  job=JOB-20260528-6187CD70
+  terminalStatus=succeeded
+  ingressOrigin=feishu assertion passed
+
+npm run smoke:m2-recovery -> passed before final doc/smoke assertion edits
+  pipeline job=JOB-20260528-0484B8DE succeeded
+  master_slave_discussion job=JOB-20260528-85E3E240 succeeded
+
+git diff --check -> passed; only Windows CRLF warnings were printed.
+```
+
+Notes:
+
+```text
+Do not run multiple smoke scripts that call npm run dev:start in parallel.
+They share the same Postgres/dev stack and can race during migration. Sequential
+runs are clean.
+
+npm run smoke:feishu-public is not a Stage 1.1 product gate. It remains a
+private/reference deployment check for tomorrow123.art and is still expected to
+fail until VPS Nginx/frp routing is configured.
+```
+
+Next ordered tasks:
+
+```text
+1. Review/stabilize Stage 1.1 diff and commit it when approved.
+2. Stage 1.2: Docker Compose one-command quickstart, default HTTP-only.
+3. Add smoke:docker-compose on a clean runner path.
+4. After Docker quickstart, start M3 config generation vertical slice.
+5. Later: OpenClaw real-mode E2E proof and Tauri shell.
+```
+
+## 2026-05-28 Product Direction Correction
+
+The product goal is an open-source, downloadable multi-agent orchestration
+platform built on top of OpenClaw. Users should be able to download it, start an
+agent cluster, switch among four routing modes, generate configuration through
+an interview-style flow, and eventually manage it through a Tauri desktop
+console.
+
+Important correction:
+
+```text
+tomorrow123.art / Feishu public webhook is not the product goal. It is the
+author's private/reference deployment path for demos and self-use.
+
+The code/doc work already added for public Feishu ingress is still useful as a
+reference deployment example and smoke-test harness. However, manually
+configuring VPS Nginx + frp for tomorrow123.art should not be treated as the
+main product milestone.
+```
+
+Current product-level estimate:
+
+```text
+Orchestration kernel: ~80-90% skeleton complete.
+Overall open-source downloadable product: ~25-30% complete.
+
+Major gaps:
+1. M3 configuration generation pipeline: interview -> role plan -> prompt
+   generation -> preview gate -> injection.
+2. Input adapter abstraction: Feishu should become one adapter, not the entry
+   model.
+3. OpenClaw real-mode end-to-end verification.
+4. Docker Compose / one-command local install path.
+5. Open-source readiness: LICENSE, CI, INSTALL, demo.
+6. Tauri desktop console scaffold and later full UI.
+```
+
+Revised mainline direction:
+
+```text
+Primary product path:
+1. Input-adapter abstraction + keep Feishu as first concrete adapter.
+2. Docker Compose one-command local quickstart for Postgres + API + worker.
+3. M3 configuration generation pipeline, initially as a backend/CLI vertical
+   slice before the Tauri UI.
+4. OpenClaw real-mode E2E proof.
+5. Tauri desktop app scaffold and control surface.
+
+Demoted/off-critical-path:
+  tomorrow123.art VPS Nginx + frp + Feishu verify. Keep as private demo/reference
+  deployment task only, useful when preparing a demo video or blog post.
+```
+
+Stage 0 product boundary decision recommendation after reviewing the Claude
+discussion file:
+
+```text
+UI delivery:
+  Choose option C: one React/TypeScript Web UI that can run in browser and can
+  also be packaged inside a Tauri desktop shell. Tauri is the default end-user
+  download experience, but the Web UI remains available for developers/server
+  deployments.
+
+Tauri backend startup:
+  Choose option 3: phased approach. v1 Tauri is a thin client that connects to a
+  local backend started by Docker Compose / one-click scripts; v2 can revisit an
+  embedded sidecar. Do not switch away from Postgres/pglite/sqlite prematurely,
+  because DBOS checkpointing and the current agent ledger are already built on
+  PostgreSQL.
+
+Confirmed platform boundary:
+  docker compose default is HTTP-only; Feishu is an optional plugin/adapter.
+  POST /jobs or an equivalent HTTP ingress remains the core always-on path.
+```
+
+Stage 0 closed by user on 2026-05-28:
+
+```text
+Decisions confirmed:
+1. UI delivery uses option C: one React/TypeScript Web UI, also packaged by
+   Tauri for default end-user desktop delivery.
+2. Tauri backend startup uses option 3: v1 thin client + Docker Compose /
+   one-click scripts; v2 may revisit embedded sidecar.
+3. v1 keeps PostgreSQL. Do not switch to pglite/sqlite because DBOS checkpoint
+   tables and the agent ledger depend on PostgreSQL behavior.
+4. docker compose default is HTTP-only; Feishu is optional plugin/adapter.
+
+Current implementation sequence:
+1. Stage 1.1: IngressAdapter/EgressAdapter abstraction.
+2. Stage 1.1 acceptance: HTTP-only smoke plus existing Feishu/M2 smokes pass.
+3. Stage 1.2: Docker Compose quickstart after Feishu is decoupled.
+```
+
+## 2026-05-28 Public Feishu Ingress Status Checkpoint
+
+Historical/private deployment note:
+
+```text
+This section records useful public Feishu ingress prep work, but it is no
+longer the product mainline. Product mainline is the Stage 0 decision closure,
+then InputAdapter abstraction, Docker Compose quickstart, and M3 config
+generation. tomorrow123.art work is private demo/reference deployment.
+```
+
+ICP 备案已通过，公网 webhook 工作从“等待备案/DNS”切换到“配置
+VPS Nginx + SSL + frp + 飞书后台 URL”的阶段。
+
+Current status check:
+
+```text
+git status:
+  ## master
+   M CONTEXT.md
+
+DNS:
+  tomorrow123.art -> 49.232.90.172
+
+HTTP/HTTPS:
+  http://tomorrow123.art/health -> 308 Permanent Redirect
+  https://tomorrow123.art/health -> 200 {"status":"ok"}
+  https://tomorrow123.art/webhooks/feishu/events -> 404
+```
+
+Interpretation:
+
+```text
+1. DNS is correct and still points to the VPS.
+2. HTTPS is alive on the VPS.
+3. The current /health response is not the local orchestrator-api response
+   (`orchestrator-api` returns {"ok":true}), so it is likely a VPS/Nginx
+   health endpoint.
+4. The Feishu webhook path is not yet proxied to local orchestrator-api/frp.
+5. Do not configure Feishu backend as final until POST challenge on
+   /webhooks/feishu/events reaches orchestrator-api and returns challenge.
+```
+
+Historical immediate work for private/reference deployment:
+
+```text
+1. Add public ingress docs and templates for VPS Nginx, frps/frpc, Feishu
+   backend configuration, and mock-mode E2E checklist.
+2. Add a public webhook smoke script that can verify challenge, invalid token,
+   and optional fake message creation through the public URL.
+3. Keep first private/reference deployment pass in OPENCLAW_AGENT_MODE=mock.
+4. This no longer blocks product mainline work.
+```
+
+Work completed in this pass:
+
+```text
+Added docs/feishu-public-ingress.md.
+Added config/public-ingress/nginx/tomorrow123.art.conf.example.
+Added config/public-ingress/frp/frps.toml.example.
+Added config/public-ingress/frp/frpc.toml.example.
+Added config/public-ingress/systemd/frps-agent-openclaw.service.example.
+Added config/public-ingress/systemd/frpc-agent-openclaw.service.example.
+Added scripts/smoke-public-feishu-webhook.ps1.
+Added npm script: npm run smoke:feishu-public.
+Updated README.md and SETUP.md to point to the public ingress guide/templates.
+```
+
+Verification:
+
+```text
+npm run smoke:feishu-public
+  result: failed at challenge check
+  observed: challenge status expected 200, got 404
+
+This is the expected current failure while
+https://tomorrow123.art/webhooks/feishu/events is not yet proxied to the local
+orchestrator-api through Nginx/frp.
+
+npm run check
+  passed
+
+git diff --check
+  passed; only Windows CRLF warnings were printed
+```
+
+Deployment attempt status:
+
+```text
+SSH network check:
+  tomorrow123.art:22 reachable
+
+SSH auth check:
+  root@tomorrow123.art -> Permission denied (publickey,password)
+  ubuntu@tomorrow123.art -> Permission denied (publickey,password)
+
+Interpretation:
+  The current Windows machine can reach the VPS SSH port, but has no configured
+  non-interactive SSH key/login for the VPS. Codex cannot directly install frps
+  or edit Nginx on the VPS from this environment until SSH access is provided
+  or commands are run manually on the VPS.
+```
+
+Local/public-ingress preparation status:
+
+```text
+npm run smoke:feishu-webhook
+  passed
+  job=JOB-20260528-F9A66E71
+  terminalStatus=succeeded
+
+npm run prepare:public-ingress
+  passed
+  generated untracked deployment bundle under .runtime/public-ingress/
+  generated frp token under .runtime/public-ingress/frp-token.txt
+  generated VPS frps config, VPS Nginx config, local frpc config, and command
+  helper files
+
+npm run dev:stop
+  passed
+
+Restarted local dev stack for public E2E:
+  OPENCLAW_AGENT_MODE=mock
+  FEISHU_DRY_RUN=false
+  npm run dev:start -> API http://localhost:3000
+
+Local readiness:
+  http://localhost:3000/health -> {"ok":true}
+  POST http://localhost:3000/webhooks/feishu/events with .env
+  FEISHU_VERIFICATION_TOKEN challenge -> passed
+```
+
+Current blocker:
+
+```text
+VPS work still needs to be performed manually or through valid SSH access:
+1. install/start frps with .runtime/public-ingress/vps/etc/frp/agent-openclaw-frps.toml
+2. start local frpc with .runtime/public-ingress/local/frpc/agent-openclaw-frpc.toml
+3. update Nginx with .runtime/public-ingress/vps/nginx/tomorrow123.art.conf
+4. nginx -t && reload
+5. rerun npm run smoke:feishu-public; expected result after proxy is fixed:
+   challenge 200, wrong token 401, optional synthetic message succeeded
+```
+
+Final sanity check after local preparation:
+
+```text
+npm run check -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+http://localhost:3000/health -> {"ok":true}
+https://tomorrow123.art/webhooks/feishu/events -> 404 Not Found
+
+Interpretation:
+  Local orchestrator-api is ready in mock-mode public-E2E settings.
+  The remaining gap is still VPS frps + Nginx routing to the local frpc tunnel.
+```
+
 ## 2026-05-28 Project File Organization Checkpoint
 
 Repository files were organized for long-term platform development and future
@@ -48,6 +389,38 @@ npm run check passed
 git diff --check passed, with only CRLF warnings
 old repo-local openclaw/agents and openclaw/config references cleared
 git status clean after commit
+```
+
+## 2026-05-28 Tech Stack Confirmation and M3 Desktop Framework Decision
+
+Tech stack confirmed:
+
+```text
+Backend  : Node.js + TypeScript（monorepo，npm workspaces）
+Apps     : apps/orchestrator-api（HTTP API）, apps/dbos-worker（DBOS workflow engine）
+Database : PostgreSQL — dbos.* checkpoint 表 + agent.* 业务账本
+Frontend : v1 无 web 前端。飞书是人机界面层。
+M3 app   : Tauri + React + TypeScript（桌面控制台 — 尚未开始）
+```
+
+M3 桌面框架决策：选 Tauri，不选 Electron。
+
+```text
+- Tauri 使用操作系统原生 WebView，打包体积约 5-15 MB；
+  Electron 自带 Chromium，打包体积约 150-300 MB。
+- 前端仍然是 React + TypeScript，团队无需学新技术。
+- M3 桌面 app 只是配置 UI + 状态面板，业务逻辑在 orchestrator-api，
+  桌面 app 通过 localhost HTTP 调用 API；Tauri Rust 主进程极简。
+- Tauri 2.0 2026 年已稳定，新项目首选。
+- Electron 的 Node.js 主进程优势在本项目不适用（后端独立运行，不内嵌）。
+```
+
+M3 monorepo 结构（尚未开始）：
+
+```text
+apps/desktop-app/     Tauri shell
+  src/main/           Rust 主进程（极简）
+  src/renderer/       React + TypeScript UI
 ```
 
 ## 2026-05-27 Feishu Webhook Readiness Checkpoint
@@ -461,6 +834,8 @@ test-agent：测试每个阶段输出，只测试，不修改业务产物。
 ```
 
 ## 当前技术栈
+
+> ⚠️ 以下为历史记录（DBOS 迁移前，Temporal 时代）。**当前技术栈以顶部各里程碑 Checkpoint 为准**：Node.js + TypeScript 后端，PostgreSQL，DBOS 取代 Temporal，无 web 前端，M3 桌面 app 选 Tauri + React + TypeScript。
 
 ```text
 Feishu group：真人任务入口和可见显示屏，不作为 agent-to-agent 控制总线。

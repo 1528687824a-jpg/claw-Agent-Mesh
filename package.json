@@ -9,7 +9,10 @@
     "dev:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-dev.ps1",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-dev.ps1",
     "smoke:feishu-webhook": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-feishu-webhook.ps1",
+    "smoke:http-only": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-http-only-end-to-end.ps1",
+    "smoke:feishu-public": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-public-feishu-webhook.ps1",
     "smoke:m2-recovery": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-m2-recovery.ps1",
+    "prepare:public-ingress": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-public-ingress-bundle.ps1",
     "maintenance:cleanup-sessions": "tsx scripts/cleanup-expired-sessions.ts",
     "check": "tsc --noEmit"
   },
