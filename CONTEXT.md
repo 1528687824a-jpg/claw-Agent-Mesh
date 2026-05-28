@@ -183,10 +183,76 @@ Next ordered tasks:
 
 ```text
 1. Completed: Stage 1.1 committed as c30f4d6.
-2. Completed: Stage 1.2 Docker Compose quickstart.
-3. Completed: smoke:docker-compose verified.
+2. Completed: Stage 1.2 Docker Compose quickstart, committed as c5fee50.
+3. Completed: smoke:docker-compose verified, committed as c5fee50.
 4. Current: M3 config generation vertical slice.
 5. Later: OpenClaw real-mode E2E proof and Tauri shell.
+```
+
+## 2026-05-28 M3 Config Generation Vertical Slice Checkpoint
+
+Task 4 is implemented and verified. M3 now exists as a backend/CLI vertical
+slice before any Tauri UI work.
+
+Code changes:
+
+```text
+Added examples/m3/interview.answers.example.json.
+Added scripts/generate-cluster-config.ts.
+Added scripts/smoke-m3-config.ps1.
+Added npm scripts:
+  npm run m3:generate
+  npm run smoke:m3-config
+Added packages/shared AgentClusterConfig types.
+Added apps/dbos-worker/src/config/cluster.ts.
+Updated createPipelinePlan so AGENT_CLUSTER_CONFIG_PATH is read inside the
+checkpointed DBOS planning step. If not set, the old prompt-inference behavior
+remains unchanged.
+Updated README.md and SETUP.md with M3 CLI/smoke usage.
+```
+
+Generated cluster flow:
+
+```text
+structured interview answers JSON
+  -> mock planner
+  -> preview gate
+  -> cluster.config.json
+  -> agents/<agent-id>/AGENTS.md
+  -> AGENT_CLUSTER_CONFIG_PATH
+  -> DBOS createPipelinePlan uses generated stages
+```
+
+Validation:
+
+```text
+npm run m3:generate -- --answers examples/m3/interview.answers.example.json --out .runtime/m3-preview-test
+  preview passed without writing files
+
+npm run smoke:m3-config -> passed
+  generated cluster=content-studio-demo
+  config=.runtime/m3-config-smoke/cluster.config.json
+  job=JOB-20260528-FA47F791
+  terminalStatus=succeeded
+  stageAgents=research-agent, writer-agent, image-agent
+```
+
+Notes:
+
+```text
+The first smoke attempt exposed the default Postgres 16 volume vs Postgres 17
+image incompatibility. docker-compose.yml now uses a new postgres17-data volume
+name, preserving the old PG16 volume without deleting user data.
+```
+
+Next ordered tasks:
+
+```text
+1. Completed: Stage 1.1 committed as c30f4d6.
+2. Completed: Stage 1.2 / smoke:docker-compose committed as c5fee50.
+3. Completed: M3 config generation vertical slice.
+4. Current: OpenClaw real-mode E2E proof.
+5. Then: Tauri shell initial proof.
 ```
 
 ## 2026-05-28 Product Direction Correction

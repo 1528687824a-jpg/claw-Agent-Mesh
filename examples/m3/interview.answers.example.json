@@ -1,0 +1,14 @@
+{
+  "clusterId": "content-studio-demo",
+  "name": "Content Studio Demo",
+  "primaryUseCase": "Turn a product idea into a researched short article and image brief.",
+  "audience": "independent builders and product teams",
+  "tone": "clear, practical, and polished",
+  "desiredOutputs": ["research", "writing", "image"],
+  "defaultRoutingMode": "supervisor_pipeline",
+  "constraints": [
+    "Use mock mode for the first generated-cluster smoke.",
+    "Keep outputs concise enough for a quick demo.",
+    "Do not require Feishu credentials."
+  ]
+}

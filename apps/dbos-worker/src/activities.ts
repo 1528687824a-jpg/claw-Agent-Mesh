@@ -51,6 +51,7 @@ import {
   DEFAULT_ROUTING_MODE
 } from "../../../packages/shared/src/types";
 import { runOpenClawAgent, type OpenClawRunResult } from "./adapters/openclaw";
+import { loadClusterConfig } from "./config/cluster";
 import { deliverOutboundMessage } from "./egress/dispatcher";
 import { maybeCrashOnce } from "./test-crash";
 
@@ -432,19 +433,7 @@ export async function prepareJobWorkspace(jobId: string) {
   };
 }
 
-export async function createPipelinePlan(input: {
-  jobId: string;
-  userRequestArtifactId: string;
-}): Promise<StageRecord[]> {
-  await markJobPlanning(input.jobId);
-  const job = await getJob(input.jobId);
-  if (!job) {
-    throw new Error(`Job not found: ${input.jobId}`);
-  }
-
-  const workdir = job.workdir ?? path.resolve(process.env.JOB_DATA_DIR ?? "data/jobs", input.jobId);
-  const planPath = path.join(workdir, "plan", "pipeline-plan.json");
-  const rawPrompt = job.rawPrompt;
+function inferStagesFromPrompt(rawPrompt: string): StageDefinition[] {
   const needsResearch =
     /研究|调研|资料|网上|搜索|查询|查一下|最新|现状|竞品|事实|数据|来源|research|search|latest|current/i.test(
       rawPrompt
@@ -520,11 +509,38 @@ export async function createPipelinePlan(input: {
     });
   }
 
+  return stages;
+}
+
+export async function createPipelinePlan(input: {
+  jobId: string;
+  userRequestArtifactId: string;
+}): Promise<StageRecord[]> {
+  await markJobPlanning(input.jobId);
+  const job = await getJob(input.jobId);
+  if (!job) {
+    throw new Error(`Job not found: ${input.jobId}`);
+  }
+
+  const workdir = job.workdir ?? path.resolve(process.env.JOB_DATA_DIR ?? "data/jobs", input.jobId);
+  const planPath = path.join(workdir, "plan", "pipeline-plan.json");
+  const rawPrompt = job.rawPrompt;
+  const clusterConfig = await loadClusterConfig();
+  const stages: StageDefinition[] = clusterConfig?.stages ?? inferStagesFromPrompt(rawPrompt);
+
   const plan = {
     jobId: input.jobId,
     sourceArtifactId: input.userRequestArtifactId,
     planningAgentId: "main-agent",
-    routingMode: job.routingMode ?? DEFAULT_ROUTING_MODE,
+    routingMode: job.routingMode ?? clusterConfig?.defaultRoutingMode ?? DEFAULT_ROUTING_MODE,
+    clusterConfig: clusterConfig
+      ? {
+          clusterId: clusterConfig.clusterId,
+          name: clusterConfig.name,
+          configPath: clusterConfig.configPath,
+          planner: clusterConfig.source.planner
+        }
+      : null,
     stages
   };
 
@@ -542,7 +558,8 @@ export async function createPipelinePlan(input: {
   await appendJobEvent(input.jobId, "main.pipeline_planned", {
     planPath,
     routingMode: plan.routingMode,
-    stageCount: plan.stages.length
+    stageCount: plan.stages.length,
+    clusterId: clusterConfig?.clusterId ?? null
   });
 
   return createPipelineStages(input.jobId, plan.stages, input.userRequestArtifactId);

@@ -14,6 +14,8 @@
     "smoke:http-only": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-http-only-end-to-end.ps1",
     "smoke:feishu-public": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-public-feishu-webhook.ps1",
     "smoke:m2-recovery": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-m2-recovery.ps1",
+    "smoke:m3-config": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-m3-config.ps1",
+    "m3:generate": "tsx scripts/generate-cluster-config.ts",
     "prepare:public-ingress": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-public-ingress-bundle.ps1",
     "maintenance:cleanup-sessions": "tsx scripts/cleanup-expired-sessions.ts",
     "check": "tsc --noEmit"

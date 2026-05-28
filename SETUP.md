@@ -76,7 +76,7 @@ Stop the quickstart stack:
 docker compose down
 ```
 
-The Postgres and job-data volumes are persistent. Use `docker compose down -v`
+The Postgres 17 and job-data volumes are persistent. Use `docker compose down -v`
 only when you intentionally want to delete local state.
 
 Repeatable Docker quickstart smoke:
@@ -88,6 +88,51 @@ npm run smoke:docker-compose
 The smoke starts the full Compose stack, creates a job through `POST /jobs`,
 polls it to `succeeded`, reads `GET /jobs/:jobId/messages`, restarts the stack,
 and verifies the job is still present.
+
+## M3 Config Generation Smoke
+
+M3 begins as a backend/CLI vertical slice. It does not require the Tauri UI.
+
+Preview a generated cluster from structured interview answers:
+
+```powershell
+npm run m3:generate -- --answers examples/m3/interview.answers.example.json --out .runtime/m3-preview
+```
+
+Approve and write the cluster config plus agent prompts:
+
+```powershell
+npm run m3:generate -- --answers examples/m3/interview.answers.example.json --out .runtime/m3-content-studio --approve
+```
+
+Generated output:
+
+```text
+cluster.config.json
+preview.md
+agents/main-agent/AGENTS.md
+agents/research-agent/AGENTS.md
+agents/writer-agent/AGENTS.md
+agents/image-agent/AGENTS.md
+agents/test-agent/AGENTS.md
+```
+
+Inject a generated cluster into the orchestrator:
+
+```powershell
+$env:AGENT_CLUSTER_CONFIG_PATH = '.runtime/m3-content-studio/cluster.config.json'
+npm run dev:start
+```
+
+Repeatable M3 smoke:
+
+```powershell
+npm run smoke:m3-config
+```
+
+The smoke generates a content-studio cluster, starts the API with
+`AGENT_CLUSTER_CONFIG_PATH`, posts a demo job, and verifies the DBOS planning
+step uses the generated `research-agent -> writer-agent -> image-agent` stages.
 
 ## Local Development Services
 

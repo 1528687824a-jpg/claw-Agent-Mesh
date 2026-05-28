@@ -54,6 +54,7 @@ npm run smoke:docker-compose
 npm run smoke:http-only
 npm run smoke:feishu-webhook
 npm run smoke:m2-recovery
+npm run smoke:m3-config
 ```
 
 Private/reference Feishu public ingress helpers:

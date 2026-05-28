@@ -103,6 +103,29 @@ export type StageDefinition = {
   maxRetries?: number;
 };
 
+export type AgentClusterAgentConfig = {
+  id: string;
+  role: string;
+  displayName: string;
+  promptPath: string;
+  capabilities: string[];
+};
+
+export type AgentClusterConfig = {
+  schemaVersion: "agent-openclaw.cluster.v1";
+  clusterId: string;
+  name: string;
+  description: string;
+  defaultRoutingMode: RoutingMode;
+  agents: AgentClusterAgentConfig[];
+  stages: StageDefinition[];
+  generatedAt: string;
+  source: {
+    planner: "mock";
+    answersPath?: string;
+  };
+};
+
 export type StageRecord = {
   id: string;
   jobId: string;
