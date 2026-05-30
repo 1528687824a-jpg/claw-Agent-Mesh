@@ -11,6 +11,53 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-30 Claude Review And Open-Source License Checkpoint
+
+Claude's latest analysis was reviewed independently instead of adopted blindly.
+
+Judgment:
+
+```text
+Claude was mostly right on the product risks:
+1. M3 real planner is a real missing product-value layer and should move up.
+2. Tauri shell smoke was too shallow if it only checked file presence.
+3. Smoke-script concurrency risk should live in project docs/checks, not only
+   in chat memory.
+4. tomorrow123.art remains a private/reference deployment task, not product
+   mainline.
+
+Adjustment:
+1. LICENSE is cheap and important for open-source readiness, so it was done
+   immediately.
+2. Rust/Tauri real build proof matters, but should not block M3 real planner
+   on this host just because cargo/rustc is currently missing.
+3. The next mainline should keep product value first: harden smokes/docs, then
+   start M3 real planner vertical slice.
+```
+
+Completed in this checkpoint:
+
+```text
+Added LICENSE with Apache-2.0 terms.
+Added "license": "Apache-2.0" to root package.json.
+Added "license": "Apache-2.0" to apps/desktop-app/package.json.
+Updated README.md with a License section.
+Regenerated package-lock metadata through npm install --package-lock-only
+--ignore-scripts.
+```
+
+Next ordered tasks:
+
+```text
+1. Current: harden smoke guidance and smoke:tauri-shell content assertions.
+2. Next: M3 real planner vertical slice behind explicit env/provider config.
+3. Then: CI for no-secret checks (check, http-only smoke, m3 smoke,
+   tauri-shell smoke).
+4. Then: INSTALL.md / SECURITY.md / CONTRIBUTING.md.
+5. Then: Rust toolchain + real Tauri build proof when host/tooling is ready.
+6. Later: job timeline/inspect endpoint and cancel job API.
+```
+
 ## 2026-05-28 Stage 1.1 Adapter Abstraction Checkpoint
 
 Stage 1.1 is implemented: HTTP is now the core ingress/egress path and Feishu

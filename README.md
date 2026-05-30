@@ -45,6 +45,10 @@ docs/feishu-public-ingress.md
 SETUP.md
 ```
 
+## License
+
+Apache-2.0. See `LICENSE`.
+
 ## Local Checks
 
 ```powershell
