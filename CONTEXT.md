@@ -230,6 +230,51 @@ Next ordered tasks:
 4. Then: cancel job API.
 ```
 
+## 2026-05-30 Open-Source Docs Checkpoint
+
+Completed:
+
+```text
+Added INSTALL.md:
+  - Docker quickstart;
+  - local development;
+  - M3 mock and real planner usage;
+  - optional Feishu/OpenClaw integration notes.
+
+Added SECURITY.md:
+  - early-stage support status;
+  - secret handling rules;
+  - public ingress exposure boundary;
+  - admin endpoint caution;
+  - OpenClaw adapter boundary;
+  - reporting note.
+
+Added CONTRIBUTING.md:
+  - product direction;
+  - OpenClaw/ClawPanel boundary;
+  - development checks;
+  - sequential smoke rule;
+  - PR expectations.
+
+Updated README.md to link INSTALL.md, SECURITY.md, and CONTRIBUTING.md.
+```
+
+Validation:
+
+```text
+npm run check:no-secrets -> passed
+npm run check -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Current: Rust toolchain + real Tauri build proof when host/tooling is ready.
+2. Then: job timeline/inspect endpoint.
+3. Then: cancel job API.
+```
+
 ## 2026-05-28 Stage 1.1 Adapter Abstraction Checkpoint
 
 Stage 1.1 is implemented: HTTP is now the core ingress/egress path and Feishu

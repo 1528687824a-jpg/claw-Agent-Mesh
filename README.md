@@ -43,6 +43,9 @@ docs/PROJECT_STRUCTURE.md
 docs/BOUNDARIES.md
 docs/feishu-public-ingress.md
 SETUP.md
+INSTALL.md
+SECURITY.md
+CONTRIBUTING.md
 ```
 
 ## License
