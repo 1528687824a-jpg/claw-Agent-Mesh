@@ -16,6 +16,7 @@
     "smoke:feishu-public": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-public-feishu-webhook.ps1",
     "smoke:m2-recovery": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-m2-recovery.ps1",
     "smoke:m3-config": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-m3-config.ps1",
+    "smoke:m3-real-planner": "tsx scripts/smoke-m3-real-planner.ts",
     "smoke:openclaw-real": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1",
     "smoke:tauri-shell": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-tauri-shell.ps1",
     "m3:generate": "tsx scripts/generate-cluster-config.ts",

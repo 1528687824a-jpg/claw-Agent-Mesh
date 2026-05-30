@@ -32,6 +32,13 @@ function asRoutingMode(value: unknown): RoutingMode {
   throw new Error(`Invalid cluster config: defaultRoutingMode must be one of ${ROUTING_MODES.join(", ")}`);
 }
 
+function asPlanner(value: unknown): AgentClusterConfig["source"]["planner"] {
+  if (value === "mock" || value === "openai-compatible") {
+    return value;
+  }
+  return "mock";
+}
+
 function asStages(value: unknown): StageDefinition[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error("Invalid cluster config: stages must be a non-empty array");
@@ -85,10 +92,14 @@ function parseClusterConfig(raw: unknown, configPath: string): LoadedClusterConf
     stages: asStages(input.stages),
     generatedAt: asString(input.generatedAt, "generatedAt"),
     source: {
-      planner: "mock",
+      planner: asPlanner((input.source as Record<string, unknown> | undefined)?.planner),
       answersPath:
         typeof (input.source as Record<string, unknown> | undefined)?.answersPath === "string"
           ? ((input.source as Record<string, unknown>).answersPath as string)
+          : undefined,
+      model:
+        typeof (input.source as Record<string, unknown> | undefined)?.model === "string"
+          ? ((input.source as Record<string, unknown>).model as string)
           : undefined
     },
     configPath

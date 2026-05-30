@@ -103,6 +103,7 @@ Recommended order for a broad local pass:
 npm run check
 npm run smoke:http-only
 npm run smoke:m3-config
+npm run smoke:m3-real-planner
 npm run smoke:tauri-shell
 npm run smoke:m2-recovery
 ```
@@ -156,6 +157,28 @@ npm run smoke:m3-config
 The smoke generates a content-studio cluster, starts the API with
 `AGENT_CLUSTER_CONFIG_PATH`, posts a demo job, and verifies the DBOS planning
 step uses the generated `research-agent -> writer-agent -> image-agent` stages.
+
+Optional real planner path:
+
+```powershell
+$env:M3_PLANNER_MODE = 'openai-compatible'
+$env:M3_PLANNER_BASE_URL = 'https://api.example.com/v1'
+$env:M3_PLANNER_MODEL = '<planner-model>'
+$env:M3_PLANNER_API_KEY = '<secret>'
+npm run m3:generate -- --answers examples/m3/interview.answers.example.json --out .runtime/m3-real-preview --approve
+```
+
+The provider must expose an OpenAI-compatible `/chat/completions` endpoint.
+Never commit planner API keys. To validate the real-planner plumbing without a
+network provider or secret:
+
+```powershell
+npm run smoke:m3-real-planner
+```
+
+The smoke starts a local fake chat-completions provider and verifies that
+`m3:generate` calls it, parses the returned JSON plan, records planner metadata,
+and writes a generated stage order selected by the planner.
 
 ## OpenClaw Real Mode Smoke
 

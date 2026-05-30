@@ -121,8 +121,9 @@ export type AgentClusterConfig = {
   stages: StageDefinition[];
   generatedAt: string;
   source: {
-    planner: "mock";
+    planner: "mock" | "openai-compatible";
     answersPath?: string;
+    model?: string;
   };
 };
 

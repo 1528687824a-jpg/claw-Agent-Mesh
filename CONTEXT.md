@@ -102,6 +102,75 @@ Next ordered tasks:
 5. Later: job timeline/inspect endpoint and cancel job API.
 ```
 
+## 2026-05-30 M3 Real Planner Checkpoint
+
+M3 now has a real-planner vertical slice while preserving the mock default.
+
+Code changes:
+
+```text
+Updated scripts/generate-cluster-config.ts:
+  - added --planner mock|openai-compatible;
+  - added optional --model and --base-url CLI overrides;
+  - added M3_PLANNER_MODE, M3_PLANNER_BASE_URL, M3_PLANNER_MODEL,
+    M3_PLANNER_API_KEY, M3_PLANNER_TEMPERATURE, and
+    M3_PLANNER_TIMEOUT_SECONDS env support;
+  - default remains mock and requires no secret/network call;
+  - openai-compatible planner calls /chat/completions, asks for JSON, validates
+    roles against the local role catalog, and converts planner-selected stages
+    into AgentClusterConfig.
+
+Updated AgentClusterConfig source metadata:
+  - source.planner is now "mock" | "openai-compatible";
+  - source.model can record the planner model without storing secrets.
+
+Added scripts/smoke-m3-real-planner.ts and npm run smoke:m3-real-planner:
+  - starts a local fake OpenAI-compatible chat-completions provider;
+  - runs m3:generate through the openai-compatible planner path;
+  - verifies auth/model request shape, JSON response parsing, source metadata,
+    and planner-selected stage order.
+
+Updated .env.example / README.md / SETUP.md with the optional planner env and
+the new smoke.
+```
+
+Validation:
+
+```text
+npm run smoke:m3-real-planner -> passed
+  planner=openai-compatible
+  model=planner-smoke-model
+  stageAgents=research-agent, writer-agent, video-agent
+
+npm run check -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+
+npm run smoke:m3-config -> passed
+  job=JOB-20260530-9ECC11C2
+  terminalStatus=succeeded
+  stageAgents=research-agent, writer-agent, image-agent
+```
+
+Notes:
+
+```text
+Do not commit real M3 planner API keys. Real provider use is opt-in through
+environment variables. The fake-provider smoke is the normal CI-safe proof.
+
+During smoke:m3-config, Docker Desktop printed a transient npipe connection
+warning but the local dev stack started and the smoke passed.
+```
+
+Next ordered tasks:
+
+```text
+1. Current: CI for no-secret checks (check, http-only smoke, m3 smoke,
+   m3-real-planner smoke, tauri-shell smoke).
+2. Then: INSTALL.md / SECURITY.md / CONTRIBUTING.md.
+3. Then: Rust toolchain + real Tauri build proof when host/tooling is ready.
+4. Later: job timeline/inspect endpoint and cancel job API.
+```
+
 ## 2026-05-28 Stage 1.1 Adapter Abstraction Checkpoint
 
 Stage 1.1 is implemented: HTTP is now the core ingress/egress path and Feishu
