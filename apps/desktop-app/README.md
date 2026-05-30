@@ -6,6 +6,16 @@ The v1 desktop app is a thin client. It expects the backend stack to be running
 locally through Docker Compose or the development scripts, then talks to
 `http://localhost:3000`.
 
+Current MVP surface:
+
+```text
+job list
+new HTTP job creation
+job detail summary
+timeline view from GET /jobs/:id/timeline
+cancel action through POST /jobs/:id/cancel
+```
+
 ```powershell
 docker compose up --build
 npm install --prefix apps/desktop-app

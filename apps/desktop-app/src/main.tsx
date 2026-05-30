@@ -1,16 +1,73 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createJob, getHealth, getJob, getMessages, type GroupMessage, type JobRecord } from "./api";
+import {
+  cancelJob,
+  createJob,
+  getHealth,
+  getJob,
+  getJobTimeline,
+  listJobs,
+  type JobRecord,
+  type JobStatus,
+  type JobTimeline,
+  type RoutingMode
+} from "./api";
 import "./styles.css";
 
 type ApiState = "checking" | "online" | "offline";
 
+const routingModes: RoutingMode[] = [
+  "supervisor_pipeline",
+  "pipeline",
+  "classic_master_slave",
+  "master_slave_discussion"
+];
+
+const cancellableStatuses: JobStatus[] = [
+  "created",
+  "queued",
+  "planning",
+  "running",
+  "testing",
+  "fixing",
+  "waiting_for_human"
+];
+
+function formatTime(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function compactEventType(value: string) {
+  return value.replace(/^job\./, "").replace(/^stage\./, "").replace(/^group\./, "");
+}
+
+function isCancellable(job: JobRecord | null) {
+  return job ? cancellableStatuses.includes(job.status) : false;
+}
+
+function statusTone(status: JobStatus) {
+  if (status === "succeeded") return "success";
+  if (status === "failed" || status === "cancelled") return "danger";
+  if (status === "waiting_for_human") return "warn";
+  return "active";
+}
+
 function App() {
   const [apiState, setApiState] = useState<ApiState>("checking");
   const [prompt, setPrompt] = useState("Draft a short launch note for a tiny multi-agent product.");
-  const [jobId, setJobId] = useState("");
-  const [job, setJob] = useState<JobRecord | null>(null);
-  const [messages, setMessages] = useState<GroupMessage[]>([]);
+  const [routingMode, setRoutingMode] = useState<RoutingMode>("supervisor_pipeline");
+  const [maxModelCalls, setMaxModelCalls] = useState(20);
+  const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState("");
+  const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
+  const [timeline, setTimeline] = useState<JobTimeline | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const statusText = useMemo(() => {
@@ -19,25 +76,92 @@ function App() {
     return "Checking API";
   }, [apiState]);
 
-  async function refresh(targetJobId = jobId) {
-    if (!targetJobId.trim()) return;
-    const [nextJob, nextMessages] = await Promise.all([getJob(targetJobId.trim()), getMessages(targetJobId.trim())]);
-    setJob(nextJob);
-    setMessages(nextMessages.messages);
+  const selectedFromList = useMemo(
+    () => jobs.find((job) => job.id === selectedJobId) ?? selectedJob,
+    [jobs, selectedJob, selectedJobId]
+  );
+
+  async function refreshJobs(preferredJobId = selectedJobId) {
+    const response = await listJobs(50);
+    setJobs(response.jobs);
+    const nextSelectedId = preferredJobId || response.jobs[0]?.id || "";
+    setSelectedJobId(nextSelectedId);
+    return nextSelectedId;
+  }
+
+  async function refreshJob(targetJobId = selectedJobId) {
+    if (!targetJobId) {
+      setSelectedJob(null);
+      setTimeline(null);
+      return;
+    }
+
+    const [job, nextTimeline] = await Promise.all([getJob(targetJobId), getJobTimeline(targetJobId)]);
+    setSelectedJob(job);
+    setTimeline(nextTimeline);
+  }
+
+  async function refreshAll(targetJobId = selectedJobId) {
+    const nextSelectedId = await refreshJobs(targetJobId);
+    await refreshJob(nextSelectedId);
   }
 
   async function submitJob() {
+    setBusy(true);
     setError(null);
-    const created = await createJob(prompt);
-    setJobId(created.jobId);
-    await refresh(created.jobId);
+    try {
+      const created = await createJob({
+        prompt,
+        routingMode,
+        maxModelCalls
+      });
+      await refreshAll(created.jobId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelSelectedJob() {
+    if (!selectedJobId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await cancelJob(selectedJobId);
+      await refreshAll(selectedJobId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
     getHealth()
-      .then(() => setApiState("online"))
+      .then(() => {
+        setApiState("online");
+        return refreshAll();
+      })
       .catch(() => setApiState("offline"));
   }, []);
+
+  useEffect(() => {
+    if (!selectedJobId || apiState !== "online") return;
+    refreshJob(selectedJobId).catch((caught) =>
+      setError(caught instanceof Error ? caught.message : String(caught))
+    );
+  }, [selectedJobId, apiState]);
+
+  useEffect(() => {
+    if (apiState !== "online") return;
+    const interval = window.setInterval(() => {
+      refreshAll(selectedJobId).catch(() => {
+        setApiState("offline");
+      });
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [apiState, selectedJobId]);
 
   return (
     <main className="shell">
@@ -46,75 +170,147 @@ function App() {
           <h1>Agent OpenClaw</h1>
           <p>Local multi-agent control console</p>
         </div>
-        <span className={`status ${apiState}`}>{statusText}</span>
+        <div className="topbarActions">
+          <span className={`status ${apiState}`}>{statusText}</span>
+          <button
+            className="secondaryButton"
+            type="button"
+            onClick={() => refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))}
+            disabled={apiState !== "online" || busy}
+          >
+            Refresh
+          </button>
+        </div>
       </header>
 
-      <section className="workspace">
+      <section className="composerBand">
         <form
           className="composer"
           onSubmit={(event) => {
             event.preventDefault();
-            submitJob().catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+            submitJob();
           }}
         >
           <label htmlFor="prompt">New Job</label>
           <textarea id="prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
-          <button type="submit" disabled={apiState !== "online" || !prompt.trim()}>
-            Start Job
-          </button>
-        </form>
-
-        <section className="jobTools">
-          <label htmlFor="jobId">Job Lookup</label>
-          <div className="lookup">
-            <input id="jobId" value={jobId} onChange={(event) => setJobId(event.target.value)} />
-            <button
-              type="button"
-              onClick={() => refresh().catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))}
-              disabled={!jobId.trim()}
+          <div className="composerControls">
+            <label htmlFor="routingMode">Routing</label>
+            <select
+              id="routingMode"
+              value={routingMode}
+              onChange={(event) => setRoutingMode(event.target.value as RoutingMode)}
             >
-              Refresh
+              {routingModes.map((mode) => (
+                <option value={mode} key={mode}>
+                  {mode}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="maxModelCalls">Budget</label>
+            <input
+              id="maxModelCalls"
+              type="number"
+              min="1"
+              max="100"
+              value={maxModelCalls}
+              onChange={(event) => setMaxModelCalls(Number(event.target.value))}
+            />
+            <button type="submit" disabled={apiState !== "online" || busy || !prompt.trim()}>
+              Start Job
             </button>
           </div>
           {error ? <p className="error">{error}</p> : null}
-        </section>
+        </form>
       </section>
 
-      <section className="results">
-        <div className="summary">
-          <h2>Current Job</h2>
-          {job ? (
-            <dl>
-              <dt>ID</dt>
-              <dd>{job.id}</dd>
-              <dt>Status</dt>
-              <dd>{job.status}</dd>
-              <dt>Ingress</dt>
-              <dd>{job.ingressOrigin}</dd>
-              <dt>Routing</dt>
-              <dd>{job.routingMode}</dd>
+      <section className="dashboard">
+        <aside className="jobList">
+          <div className="sectionHeader">
+            <h2>Jobs</h2>
+            <span>{jobs.length}</span>
+          </div>
+          <ol>
+            {jobs.map((job) => (
+              <li key={job.id}>
+                <button
+                  className={job.id === selectedJobId ? "jobRow selected" : "jobRow"}
+                  type="button"
+                  onClick={() => setSelectedJobId(job.id)}
+                >
+                  <span className={`dot ${statusTone(job.status)}`} />
+                  <span className="jobMeta">
+                    <strong>{job.id}</strong>
+                    <span>{job.routingMode}</span>
+                  </span>
+                  <span className="jobStatus">{job.status}</span>
+                  <span className="jobTime">{formatTime(job.createdAt)}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </aside>
+
+        <section className="jobDetail">
+          <div className="sectionHeader detailHeader">
+            <div>
+              <h2>{selectedFromList?.id ?? "No job selected"}</h2>
+              <p>{selectedFromList ? `${selectedFromList.ingressOrigin} / ${selectedFromList.routingMode}` : "-"}</p>
+            </div>
+            <button
+              className="dangerButton"
+              type="button"
+              onClick={cancelSelectedJob}
+              disabled={!isCancellable(selectedFromList) || busy}
+            >
+              {selectedFromList?.status === "cancelled" ? "Cancelled" : "Cancel"}
+            </button>
+          </div>
+
+          {selectedFromList ? (
+            <dl className="stats">
+              <div>
+                <dt>Status</dt>
+                <dd>{selectedFromList.status}</dd>
+              </div>
+              <div>
+                <dt>Created</dt>
+                <dd>{formatTime(selectedFromList.createdAt)}</dd>
+              </div>
+              <div>
+                <dt>Budget</dt>
+                <dd>{selectedFromList.maxModelCalls}</dd>
+              </div>
+              <div>
+                <dt>Timeline</dt>
+                <dd>{timeline?.summary.totalTimelineItems ?? 0}</dd>
+              </div>
             </dl>
           ) : (
-            <p>No job selected.</p>
+            <p className="emptyState">No job loaded.</p>
           )}
-        </div>
 
-        <div className="timeline">
-          <h2>Messages</h2>
-          {messages.length ? (
-            <ol>
-              {messages.map((message) => (
-                <li key={message.id}>
-                  <span>{message.senderAgentId}</span>
-                  <strong>{message.messageType}</strong>
-                  <p>{message.content}</p>
+          <div className="timelineHeader">
+            <h3>Timeline</h3>
+            <span>{timeline?.summary.truncated ? "latest items" : "complete"}</span>
+          </div>
+          <ol className="timeline">
+            {timeline?.timeline.length ? (
+              timeline.timeline.map((item) => (
+                <li key={item.id} className="timelineItem">
+                  <time>{formatTime(item.at)}</time>
+                  <span className={`source source-${item.source}`}>{item.source.replace("_", " ")}</span>
+                  <div>
+                    <strong>{compactEventType(item.eventType)}</strong>
+                    <p>{item.title}</p>
+                    {item.actor ? <small>{item.actor}</small> : null}
+                  </div>
                 </li>
-              ))}
-            </ol>
-          ) : (
-            <p>No messages loaded.</p>
-          )}
-        </div>
+              ))
+            ) : (
+              <li className="emptyState">No timeline events.</li>
+            )}
+          </ol>
+        </section>
       </section>
     </main>
   );

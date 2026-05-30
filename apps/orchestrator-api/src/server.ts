@@ -6,7 +6,8 @@ import {
   cancelJob,
   createJob,
   getJob,
-  getJobByFeishuMessageId
+  getJobByFeishuMessageId,
+  listJobs
 } from "../../../packages/db/src/jobs";
 import { markModelCallFailedUnknownOutcome } from "../../../packages/db/src/model-calls";
 import { getGroupMessagesForJob, getJobDetails, getJobTimeline } from "../../../packages/db/src/pipeline";
@@ -24,10 +25,29 @@ const timelineQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).optional()
 });
 
+const listJobsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  status: z.string().optional(),
+  ingressOrigin: z.string().optional()
+});
+
 const cancelJobSchema = z.object({
   reason: z.string().max(500).optional(),
   requesterId: z.string().max(200).optional()
 });
+
+const defaultCorsOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "tauri://localhost"
+];
+
+function getCorsOrigins() {
+  return (process.env.ORCHESTRATOR_CORS_ORIGINS ?? defaultCorsOrigins.join(","))
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
 
 function requireAdminToken(request: express.Request, response: express.Response) {
   const expectedToken = process.env.ADMIN_API_TOKEN?.trim();
@@ -49,6 +69,24 @@ async function main() {
   const app = express();
   await launchDbos();
   const port = Number(process.env.ORCHESTRATOR_PORT ?? 3000);
+  const corsOrigins = getCorsOrigins();
+
+  app.use((request, response, next) => {
+    const origin = request.header("origin");
+    if (origin && corsOrigins.includes(origin)) {
+      response.header("access-control-allow-origin", origin);
+      response.header("vary", "Origin");
+      response.header("access-control-allow-methods", "GET,POST,OPTIONS");
+      response.header("access-control-allow-headers", "content-type,x-admin-token");
+    }
+
+    if (request.method === "OPTIONS") {
+      response.sendStatus(204);
+      return;
+    }
+
+    next();
+  });
 
   app.use(express.json({ limit: "1mb" }));
 
@@ -111,6 +149,18 @@ async function main() {
         modelCallId: modelCall.id,
         status: modelCall.status,
         workflowId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/jobs", async (request, response, next) => {
+    try {
+      const query = listJobsQuerySchema.parse(request.query);
+      const jobs = await listJobs(query);
+      response.json({
+        jobs
       });
     } catch (error) {
       next(error);

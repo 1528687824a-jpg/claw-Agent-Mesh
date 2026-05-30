@@ -53,6 +53,17 @@ function Wait-ForTerminalStatus {
 
 Start-DevForHttpOnlySmoke
 
+$preflight = Invoke-WebRequest `
+  -Uri "http://localhost:3000/jobs" `
+  -Method Options `
+  -Headers @{
+    Origin = "http://localhost:5173"
+    "Access-Control-Request-Method" = "POST"
+  } `
+  -UseBasicParsing
+Assert-Equal -Actual ([int]$preflight.StatusCode) -Expected 204 -Message "CORS preflight status"
+Assert-Equal -Actual $preflight.Headers["Access-Control-Allow-Origin"] -Expected "http://localhost:5173" -Message "CORS allow origin"
+
 $createBody = @{
   prompt = "HTTP-only smoke: run the mock multi-agent pipeline and produce a short final note"
   requesterId = "http-only-smoke"
@@ -68,6 +79,12 @@ $created = Invoke-RestMethod `
 Assert-True -Condition ([bool]$created.jobId) -Message "jobId missing"
 Assert-Equal -Actual $created.ingressOrigin -Expected "http" -Message "created ingress origin"
 Assert-Equal -Actual $created.status -Expected "queued" -Message "created status"
+
+$jobList = Invoke-RestMethod -Uri "http://localhost:3000/jobs?limit=20"
+$listedJob = @(
+  $jobList.jobs | Where-Object { $_.id -eq $created.jobId }
+)
+Assert-Equal -Actual $listedJob.Count -Expected 1 -Message "created job should appear in GET /jobs"
 
 $job = Wait-ForTerminalStatus -JobId $created.jobId
 Assert-Equal -Actual $job.status -Expected "succeeded" -Message "job terminal status"
@@ -117,6 +134,8 @@ Assert-True -Condition ($timelineJobCreated.Count -gt 0) -Message "timeline miss
   timelineSources = @($timelineSources | Select-Object -Unique)
   checked = @(
     "http_create_job",
+    "local_cors_preflight",
+    "http_list_jobs",
     "http_poll_terminal_status",
     "http_get_job_messages",
     "http_get_job_timeline",

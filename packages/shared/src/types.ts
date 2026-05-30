@@ -10,6 +10,19 @@ export type JobStatus =
   | "failed"
   | "cancelled";
 
+export const JOB_STATUSES = [
+  "created",
+  "queued",
+  "planning",
+  "running",
+  "testing",
+  "fixing",
+  "waiting_for_human",
+  "succeeded",
+  "failed",
+  "cancelled"
+] as const;
+
 export const ROUTING_MODES = [
   "pipeline",
   "supervisor_pipeline",

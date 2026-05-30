@@ -1,20 +1,85 @@
 const API_BASE = import.meta.env.VITE_ORCHESTRATOR_URL ?? "http://localhost:3000";
 
+export type JobStatus =
+  | "created"
+  | "queued"
+  | "planning"
+  | "running"
+  | "testing"
+  | "fixing"
+  | "waiting_for_human"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export type RoutingMode =
+  | "pipeline"
+  | "supervisor_pipeline"
+  | "classic_master_slave"
+  | "master_slave_discussion";
+
 export type JobRecord = {
   id: string;
-  status: string;
+  sessionId: string;
+  status: JobStatus;
   ingressOrigin: string;
-  routingMode: string;
+  routingMode: RoutingMode;
+  maxModelCalls: number;
+  classicFinalGateEnabled: boolean;
+  discussionRounds: number;
   finalOutput: string | null;
+  workflowId: string | null;
+  requesterId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
 };
 
-export type GroupMessage = {
+export type TimelineItem = {
   id: string;
-  senderAgentId: string;
-  mentionAgentId: string | null;
-  messageType: string;
-  content: string;
-  createdAt: string;
+  source: "job_event" | "agent_event" | "group_message" | "stage_attempt" | "test_review" | "artifact";
+  at: string;
+  eventType: string;
+  title: string;
+  actor?: string;
+  stageId?: string | null;
+  artifactId?: string | null;
+  groupMessageId?: string | null;
+  seq?: number;
+  status?: string;
+  payload?: Record<string, unknown>;
+};
+
+export type JobTimeline = {
+  job: {
+    id: string;
+    status: JobStatus;
+    ingressOrigin: string;
+    routingMode: RoutingMode;
+    workflowId: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+    completedAt: string | null;
+  };
+  summary: {
+    stageCount: number;
+    attemptCount: number;
+    reviewCount: number;
+    artifactCount: number;
+    groupMessageCount: number;
+    jobEventCount: number;
+    agentEventCount: number;
+    totalTimelineItems: number;
+    returnedTimelineItems: number;
+    truncated: boolean;
+  };
+  timeline: TimelineItem[];
+};
+
+export type CreateJobInput = {
+  prompt: string;
+  routingMode: RoutingMode;
+  maxModelCalls: number;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -27,7 +92,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    const body = await response.text();
+    throw new Error(body || `${response.status} ${response.statusText}`);
   }
 
   return response.json() as Promise<T>;
@@ -37,12 +103,23 @@ export async function getHealth() {
   return request<{ ok: boolean }>("/health");
 }
 
-export async function createJob(prompt: string) {
-  return request<{ jobId: string; status: string; routingMode: string; ingressOrigin: string }>("/jobs", {
+export async function listJobs(limit = 50) {
+  return request<{ jobs: JobRecord[] }>(`/jobs?limit=${limit}`);
+}
+
+export async function createJob(input: CreateJobInput) {
+  return request<{
+    jobId: string;
+    status: string;
+    routingMode: RoutingMode;
+    ingressOrigin: string;
+  }>("/jobs", {
     method: "POST",
     body: JSON.stringify({
-      prompt,
-      requesterId: "desktop-app"
+      prompt: input.prompt,
+      requesterId: "desktop-app",
+      routingMode: input.routingMode,
+      maxModelCalls: input.maxModelCalls
     })
   });
 }
@@ -51,6 +128,22 @@ export async function getJob(jobId: string) {
   return request<JobRecord>(`/jobs/${jobId}`);
 }
 
-export async function getMessages(jobId: string) {
-  return request<{ jobId: string; ingressOrigin: string; messages: GroupMessage[] }>(`/jobs/${jobId}/messages`);
+export async function getJobTimeline(jobId: string, limit = 500) {
+  return request<JobTimeline>(`/jobs/${jobId}/timeline?limit=${limit}`);
+}
+
+export async function cancelJob(jobId: string) {
+  return request<{
+    ok: boolean;
+    changed: boolean;
+    reason: string;
+    jobId: string;
+    status: JobStatus;
+  }>(`/jobs/${jobId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({
+      reason: "Cancelled from desktop console",
+      requesterId: "desktop-app"
+    })
+  });
 }

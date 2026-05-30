@@ -11,6 +11,103 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-30 Desktop UI MVP Checkpoint
+
+Claude's latest review was re-read and combined with Codex's current judgment.
+
+Judgment:
+
+```text
+Claude is right that the next product-visible work should move from backend-only
+plumbing into the desktop control surface. The repo already had timeline and
+cancel APIs, so wiring a usable Desktop UI MVP now creates more product value
+than spending another turn on the private Feishu/VPS path.
+
+Codex adjustment:
+Rust/Tauri real packaging remains important, but on this host it is blocked by
+the missing Rust toolchain / hanging winget installer path. Keep product work
+moving through the browser/Vite desktop frontend, then retry Tauri packaging
+through a non-winget Rust installer path.
+```
+
+Completed:
+
+```text
+Added GET /jobs list support:
+  - packages/shared/src/types.ts exports JOB_STATUSES.
+  - packages/db/src/jobs.ts adds listJobs({ limit, status, ingressOrigin }).
+  - apps/orchestrator-api/src/server.ts exposes GET /jobs?limit=&status=&ingressOrigin=.
+
+Added local desktop CORS:
+  - default origins: http://localhost:5173, http://127.0.0.1:5173,
+    tauri://localhost.
+  - .env.example documents ORCHESTRATOR_CORS_ORIGINS.
+
+Upgraded apps/desktop-app from a thin demo into a job-control MVP:
+  - creates jobs with prompt, routing mode, and max model-call budget;
+  - lists recent jobs;
+  - selects a job and displays status, ingress, routing, budget, timestamps;
+  - reads /jobs/:id/timeline and displays timeline events;
+  - calls /jobs/:id/cancel for cancellable jobs;
+  - has a dense dashboard layout suitable for repeated operator use.
+
+Updated docs:
+  - README.md notes the desktop shell now create/list/inspect/cancel jobs.
+  - SETUP.md records the UI-consumed endpoints.
+  - apps/desktop-app/README.md describes the current MVP surface.
+
+Strengthened HTTP-only smoke:
+  - validates local CORS preflight from http://localhost:5173;
+  - validates the created job appears in GET /jobs.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm --prefix apps/desktop-app run build -> passed
+npm run smoke:tauri-shell -> passed
+  rustToolchain=missing
+  buildRunnable=false
+npm run check:no-secrets -> passed
+npm run smoke:http-only -> passed
+  job=JOB-20260530-DEEFC053
+  terminalStatus=succeeded
+  ingressOrigin=http
+  messageCount=4
+  finalMessageCount=2
+  timelineItemCount=86
+  checked includes local_cors_preflight, http_list_jobs, http_get_job_timeline
+npm run smoke:cancel-job -> passed
+  job=JOB-20260530-A272645E
+  waitingStatus=waiting_for_human
+  cancelStatus=cancelled
+  secondCancelReason=already_cancelled
+  timelineCancelEvents=2
+git diff --check -> passed; only Windows CRLF warnings were printed
+
+Vite desktop dev server is running:
+  http://127.0.0.1:5173
+
+Headless Edge visual verification passed. Screenshot artifact:
+  .runtime/desktop-dev/desktop-mvp-ready.png
+```
+
+Next ordered tasks:
+
+```text
+1. Current completed: Desktop UI MVP create/list/inspect/cancel wiring.
+2. Next: M3 real provider E2E with a real local provider env, without printing
+   or saving secrets.
+3. Then: Rust/Tauri build via a non-winget path (manual rustup-init, Scoop, or
+   another non-hanging installer).
+4. Then: remote GitHub Actions run/push verification.
+5. Then: smoke lock mechanism so dev-stack smokes cannot trample each other.
+6. Then: cancel archival consistency check/fix.
+7. Then: timeline since pagination.
+8. Then: m2 recovery nightly CI.
+```
+
 ## 2026-05-30 Claude Review And Open-Source License Checkpoint
 
 Claude's latest analysis was reviewed independently instead of adopted blindly.

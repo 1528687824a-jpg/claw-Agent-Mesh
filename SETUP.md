@@ -232,6 +232,15 @@ npm install --prefix apps/desktop-app
 npm --prefix apps/desktop-app run tauri:dev
 ```
 
+The current thin-client UI consumes:
+
+```text
+GET /jobs
+POST /jobs
+GET /jobs/:jobId/timeline
+POST /jobs/:jobId/cancel
+```
+
 ## Local Development Services
 
 Start Postgres, run migrations, and launch the API:

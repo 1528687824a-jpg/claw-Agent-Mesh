@@ -4,6 +4,7 @@ import {
   DEFAULT_MAX_MODEL_CALLS,
   DEFAULT_ROUTING_MODE,
   INGRESS_ORIGINS,
+  JOB_STATUSES,
   ROUTING_MODES,
   type CreateJobInput,
   type IngressOrigin,
@@ -24,6 +25,18 @@ function normalizeIngressOrigin(value: unknown): IngressOrigin {
   return typeof value === "string" && (INGRESS_ORIGINS as readonly string[]).includes(value)
     ? (value as IngressOrigin)
     : "http";
+}
+
+function normalizeIngressOriginFilter(value: unknown): IngressOrigin | null {
+  return typeof value === "string" && (INGRESS_ORIGINS as readonly string[]).includes(value)
+    ? (value as IngressOrigin)
+    : null;
+}
+
+function normalizeJobStatus(value: unknown): JobStatus | null {
+  return typeof value === "string" && (JOB_STATUSES as readonly string[]).includes(value)
+    ? (value as JobStatus)
+    : null;
 }
 
 function toJobRecord(row: any): JobRecord {
@@ -104,6 +117,41 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
 export async function getJob(jobId: string): Promise<JobRecord | null> {
   const result = await pool.query(`select * from agent.jobs where id = $1`, [jobId]);
   return result.rows[0] ? toJobRecord(result.rows[0]) : null;
+}
+
+export async function listJobs(input: {
+  limit?: number;
+  status?: string;
+  ingressOrigin?: string;
+} = {}): Promise<JobRecord[]> {
+  const values: unknown[] = [];
+  const where: string[] = [];
+  const status = normalizeJobStatus(input.status);
+  const ingressOrigin = normalizeIngressOriginFilter(input.ingressOrigin);
+
+  if (status) {
+    values.push(status);
+    where.push(`status = $${values.length}`);
+  }
+
+  if (input.ingressOrigin && ingressOrigin) {
+    values.push(ingressOrigin);
+    where.push(`ingress_origin = $${values.length}`);
+  }
+
+  const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+  values.push(limit);
+
+  const result = await pool.query(
+    `select *
+     from agent.jobs
+     ${where.length ? `where ${where.join(" and ")}` : ""}
+     order by created_at desc
+     limit $${values.length}`,
+    values
+  );
+
+  return result.rows.map(toJobRecord);
 }
 
 export async function getJobByFeishuMessageId(feishuMessageId: string): Promise<JobRecord | null> {
