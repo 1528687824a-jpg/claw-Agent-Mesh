@@ -69,6 +69,7 @@ $job = Invoke-RestMethod -Uri 'http://localhost:3000/jobs' -Method Post -Content
 Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($job.jobId)"
 Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($job.jobId)/messages"
 Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($job.jobId)/timeline"
+Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($job.jobId)/timeline?since=2026-05-31T00%3A00%3A00.000Z"
 ```
 
 Stop the quickstart stack:
@@ -108,6 +109,7 @@ npm run smoke:m3-config
 npm run smoke:m3-real-planner
 npm run smoke:m3-real-provider
 npm run smoke:cancel-job
+npm run smoke:timeline-since
 npm run smoke:desktop-ui
 npm run smoke:desktop-ui-prod
 npm run smoke:tauri-shell
@@ -258,8 +260,14 @@ The current thin-client UI consumes:
 GET /jobs
 POST /jobs
 GET /jobs/:jobId/timeline
+GET /jobs/:jobId/timeline?since=<ISO timestamp>&limit=<n>
 POST /jobs/:jobId/cancel
 ```
+
+Timeline pagination is incremental when `since` is present: the API returns
+events strictly after that ISO timestamp, in chronological order, up to `limit`.
+The response summary includes `matchedTimelineItems`, `hasMore`, and
+`nextSince` so clients can keep polling without reloading the full timeline.
 
 Browser UI integration smoke:
 
@@ -562,7 +570,32 @@ and verifies:
 ```text
 1. the job status becomes cancelled;
 2. repeating cancel is idempotent;
-3. GET /jobs/:jobId/timeline includes job.cancelled.
+3. the cancelled session is archived/retained;
+4. GET /jobs/:jobId/timeline includes job.cancelled and job.archived.
+```
+
+## Timeline Since Smoke
+
+Validate incremental timeline pagination:
+
+```powershell
+npm run smoke:timeline-since
+```
+
+The smoke creates a mock job, reads its full timeline, chooses a midpoint
+timestamp, then calls:
+
+```text
+GET /jobs/:jobId/timeline?since=<ISO timestamp>&limit=<n>
+```
+
+and verifies:
+
+```text
+1. all returned items are strictly after the cursor timestamp;
+2. returned order matches the full timeline order;
+3. limit=2 returns the first two matching events, not the latest two;
+4. summary.hasMore, summary.truncated, and summary.nextSince are correct.
 ```
 
 M2.5 local quality/budget checks:

@@ -554,11 +554,13 @@ function compactItem(item: TimelineItem): Omit<TimelineItem, "order"> {
   return publicItem;
 }
 
-export async function getJobTimeline(jobId: string, options: { limit?: number } = {}) {
+export async function getJobTimeline(jobId: string, options: { limit?: number; since?: string } = {}) {
   const details = await getJobDetails(jobId);
   if (!details.job) {
     return { job: null };
   }
+  const since = options.since ? new Date(options.since).toISOString() : null;
+  const sinceTime = since ? Date.parse(since) : null;
 
   const timeline: TimelineItem[] = [];
   let order = 0;
@@ -693,7 +695,14 @@ export async function getJobTimeline(jobId: string, options: { limit?: number } 
     return left.order - right.order;
   });
   const limit = Math.min(Math.max(options.limit ?? 200, 1), 1000);
-  const limited = sorted.length > limit ? sorted.slice(sorted.length - limit) : sorted;
+  const matched = sinceTime === null
+    ? sorted
+    : sorted.filter((item) => Date.parse(item.at) > sinceTime);
+  const limited = sinceTime === null
+    ? (sorted.length > limit ? sorted.slice(sorted.length - limit) : sorted)
+    : matched.slice(0, limit);
+  const hasMore = matched.length > limited.length;
+  const nextSince = limited.length > 0 ? limited[limited.length - 1].at : since;
 
   return {
     job: {
@@ -715,8 +724,12 @@ export async function getJobTimeline(jobId: string, options: { limit?: number } 
       jobEventCount: details.events.length,
       agentEventCount: details.agentEvents.length,
       totalTimelineItems: sorted.length,
+      matchedTimelineItems: matched.length,
       returnedTimelineItems: limited.length,
-      truncated: sorted.length > limited.length
+      truncated: hasMore,
+      hasMore,
+      since,
+      nextSince
     },
     timeline: limited.map(compactItem)
   };

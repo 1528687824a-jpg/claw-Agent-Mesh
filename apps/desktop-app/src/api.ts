@@ -70,8 +70,12 @@ export type JobTimeline = {
     jobEventCount: number;
     agentEventCount: number;
     totalTimelineItems: number;
+    matchedTimelineItems: number;
     returnedTimelineItems: number;
     truncated: boolean;
+    hasMore: boolean;
+    since: string | null;
+    nextSince: string | null;
   };
   timeline: TimelineItem[];
 };
@@ -128,8 +132,12 @@ export async function getJob(jobId: string) {
   return request<JobRecord>(`/jobs/${jobId}`);
 }
 
-export async function getJobTimeline(jobId: string, limit = 500) {
-  return request<JobTimeline>(`/jobs/${jobId}/timeline?limit=${limit}`);
+export async function getJobTimeline(jobId: string, limit = 500, since?: string) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (since) {
+    params.set("since", since);
+  }
+  return request<JobTimeline>(`/jobs/${jobId}/timeline?${params.toString()}`);
 }
 
 export async function cancelJob(jobId: string) {

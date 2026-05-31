@@ -11,6 +11,69 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Timeline Since Pagination Checkpoint
+
+Timeline polling now supports incremental since-timestamp pagination while
+preserving the old latest-N behavior when no cursor is supplied.
+
+Code changes:
+
+```text
+Updated GET /jobs/:jobId/timeline:
+  - accepts optional since=<ISO timestamp> and limit=<n>;
+  - without since, keeps the existing behavior: return the latest N timeline
+    items in chronological order;
+  - with since, returns items strictly after the cursor timestamp, taking the
+    first N matching items in chronological order;
+  - response summary now includes:
+      matchedTimelineItems
+      hasMore
+      since
+      nextSince
+
+Updated apps/desktop-app/src/api.ts:
+  - JobTimeline summary type includes the new fields;
+  - getJobTimeline(jobId, limit, since?) can pass the optional cursor.
+
+Added scripts/smoke-timeline-since.ps1 and npm run smoke:timeline-since:
+  - creates a mock HTTP-origin job;
+  - reads the full timeline;
+  - uses a midpoint timeline timestamp as the since cursor;
+  - verifies filtered order/count;
+  - verifies limit=2 returns the first two matching events and reports hasMore.
+
+Updated SETUP.md with the timeline since endpoint and smoke command.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm run smoke:timeline-since -> passed
+  job=JOB-20260531-4C2BA25C
+  terminalStatus=succeeded
+  totalTimelineItems=86
+  sinceCursor=2026-05-31T11:12:27.763Z
+  sinceMatchedItems=42
+  limitedReturnedItems=2
+  limitedHasMore=true
+  nextSince=2026-05-31T11:12:27.769Z
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: GET /jobs pagination/sort/search backlog.
+5. Then smoke lock orphan cleanup.
+6. Then Node engines/docs alignment.
+7. Then m2 recovery nightly CI.
+```
+
 ## 2026-05-31 Cancel Archival Consistency Checkpoint
 
 Cancelled jobs now enter the same session archival/retention ledger as

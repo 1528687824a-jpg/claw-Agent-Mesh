@@ -22,7 +22,8 @@ const unstickModelCallSchema = z.object({
 });
 
 const timelineQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(1000).optional()
+  limit: z.coerce.number().int().min(1).max(1000).optional(),
+  since: z.string().datetime({ offset: true }).optional()
 });
 
 const listJobsQuerySchema = z.object({
@@ -255,7 +256,10 @@ async function main() {
   app.get("/jobs/:jobId/timeline", async (request, response, next) => {
     try {
       const query = timelineQuerySchema.parse(request.query);
-      const timeline = await getJobTimeline(request.params.jobId, { limit: query.limit });
+      const timeline = await getJobTimeline(request.params.jobId, {
+        limit: query.limit,
+        since: query.since
+      });
 
       if (!timeline.job) {
         response.status(404).json({ error: "job_not_found" });

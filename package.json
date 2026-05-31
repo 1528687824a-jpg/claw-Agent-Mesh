@@ -19,6 +19,7 @@
     "smoke:m3-real-planner": "tsx scripts/smoke-m3-real-planner.ts",
     "smoke:m3-real-provider": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-m3-real-provider.ps1",
     "smoke:cancel-job": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-cancel-job.ps1",
+    "smoke:timeline-since": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-timeline-since.ps1",
     "smoke:openclaw-real": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-openclaw-real.ps1",
     "smoke:desktop-ui": "tsx scripts/smoke-desktop-ui.ts",
     "smoke:desktop-ui-prod": "tsx scripts/smoke-desktop-ui.ts --prod",
