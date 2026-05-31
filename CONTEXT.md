@@ -11,6 +11,87 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Smoke Lock Checkpoint
+
+Implemented a shared local smoke lock for dev-stack smokes.
+
+Code changes:
+
+```text
+Added scripts/run-with-smoke-lock.ps1:
+  - takes a lock name and a script path under scripts/;
+  - writes lock metadata to .runtime/locks/<name>.lock;
+  - opens the lock file with FileShare=None;
+  - fails fast if another process already holds the same lock;
+  - releases/removes the lock in finally;
+  - refuses to run script paths outside the repo scripts directory.
+
+Updated package.json dev-stack smoke scripts to use the shared lock:
+  - smoke:feishu-webhook
+  - smoke:docker-compose
+  - smoke:http-only
+  - smoke:m2-recovery
+  - smoke:m3-config
+  - smoke:m3-real-provider
+  - smoke:cancel-job
+  - smoke:openclaw-real
+
+Updated scripts/smoke-desktop-ui.ts:
+  - acquires the same dev-stack lock when it starts the API itself;
+  - skips the lock when --skip-api-start is used for CI/docker-compose mode;
+  - added phase logs;
+  - added browser-flow timeout;
+  - starts browser with ignored stdio and explicit process exit after cleanup,
+    so successful smoke runs do not hang on leftover WebSocket/child handles.
+```
+
+Validation:
+
+```text
+PowerShell lock wrapper direct run -> passed
+  Acquired smoke lock 'dev-stack'
+  wrapped smoke script ran normally
+
+Lock contention test -> passed
+  first process held .runtime/locks/dev-stack.lock
+  second run exited with code 1
+  output included "already held"
+
+npm run smoke:cancel-job -> passed through package.json lock wrapper
+  job=JOB-20260531-F5C863D2
+  waitingStatus=waiting_for_human
+  cancelStatus=cancelled
+  secondCancelReason=already_cancelled
+  timelineCancelEvents=2
+
+npm run smoke:desktop-ui -> passed through TypeScript lock path
+  job=JOB-20260531-9A630532
+  mode=dev
+  statusVisible=true
+  timelineItems=7
+
+npm run smoke:desktop-ui-prod -- --skip-api-start -> passed
+  job=JOB-20260531-003D004A
+  mode=prod
+  skipApiStart=true
+  timelineItems=7
+
+npm run check -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: cancel archival consistency.
+5. Then timeline since pagination.
+6. Then GET /jobs pagination/sort/search backlog.
+7. Then m2 recovery nightly CI.
+```
+
 ## 2026-05-30 CI Desktop Smoke Wiring Checkpoint
 
 Remote GitHub Actions verification could not be fully executed because this

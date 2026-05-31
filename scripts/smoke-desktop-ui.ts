@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rm, stat, unlink, writeFile, type FileHandle } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
@@ -21,6 +21,11 @@ type CdpResponse = {
   id?: number;
   result?: any;
   error?: { message?: string };
+};
+
+type SmokeLock = {
+  path: string;
+  handle: FileHandle;
 };
 
 function logStep(message: string) {
@@ -113,12 +118,17 @@ function run(
 function spawnManaged(
   command: string,
   args: string[],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv; shell?: boolean } = {}
+  options: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    shell?: boolean;
+    stdio?: "ignore" | "pipe";
+  } = {}
 ) {
   return spawn(command, args, {
     cwd: options.cwd ?? root,
     env: cleanEnv(options.env ?? process.env),
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: options.stdio === "ignore" ? "ignore" : ["ignore", "pipe", "pipe"],
     windowsHide: true,
     shell: options.shell ?? false
   });
@@ -195,6 +205,43 @@ async function startStaticServer(distDir: string, port: number) {
   });
 
   return server;
+}
+
+async function acquireSmokeLock(name: string): Promise<SmokeLock> {
+  const lockDir = path.join(root, ".runtime", "locks");
+  const lockPath = path.join(lockDir, `${name}.lock`);
+  await mkdir(lockDir, { recursive: true });
+
+  try {
+    const handle = await open(lockPath, "wx");
+    await handle.writeFile(
+      JSON.stringify(
+        {
+          pid: process.pid,
+          startedAt: new Date().toISOString(),
+          command: process.argv.join(" ")
+        },
+        null,
+        2
+      )
+    );
+    logStep(`acquired smoke lock '${name}'`);
+    return { path: lockPath, handle };
+  } catch (error: any) {
+    let owner = "";
+    try {
+      owner = await readFile(lockPath, "utf8");
+    } catch {
+      // Ignore missing or unreadable lock metadata.
+    }
+    throw new Error(`Smoke lock '${name}' is already held. Lock file: ${lockPath}\n${owner || error.message}`);
+  }
+}
+
+async function releaseSmokeLock(lock: SmokeLock | null) {
+  if (!lock) return;
+  await lock.handle.close();
+  await unlink(lock.path).catch(() => undefined);
 }
 
 async function getFreePort() {
@@ -376,84 +423,107 @@ async function runUiFlow(page: CdpClient) {
   };
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 async function main() {
   logStep(`mode=${mode}; skipApiStart=${skipApiStart}; uiUrl=${uiUrl}`);
   await mkdir(runtimeDir, { recursive: true });
   await rm(screenshotPath, { force: true });
-
-  if (mode === "prod") {
-    logStep("building desktop production bundle");
-    await run(npmCommand(), ["run", "build"], {
-      cwd: desktopDir,
-      shell: process.platform === "win32",
-      env: {
-        ...process.env,
-        VITE_ORCHESTRATOR_URL: apiUrl
-      }
-    });
-    logStep("desktop production bundle built");
-  }
-
-  if (skipApiStart) {
-    logStep("waiting for existing API health");
-    await waitForHttp(`${apiUrl}/health`, 60_000);
-  } else {
-    logStep("starting local API");
-    await run(npmCommand(), ["run", "dev:start"], {
-      shell: process.platform === "win32",
-      env: {
-        ...process.env,
-        FEISHU_ADAPTER_ENABLED: "false",
-        FEISHU_DRY_RUN: "true",
-        OPENCLAW_AGENT_MODE: "mock",
-        AGENT_CLUSTER_CONFIG_PATH: "",
-        ORCHESTRATOR_CORS_ORIGINS: [
-          "http://localhost:5173",
-          "http://127.0.0.1:5173",
-          "http://127.0.0.1:5174",
-          "tauri://localhost"
-        ].join(",")
-      }
-    });
-  }
+  const smokeLock = skipApiStart ? null : await acquireSmokeLock("dev-stack");
 
   let vite: ChildProcess | null = null;
   let staticServer: Server | null = null;
-  if (mode === "prod") {
-    logStep(`serving production bundle on ${uiUrl}`);
-    staticServer = await startStaticServer(path.join(desktopDir, "dist"), uiPort);
-  } else if (!(await isHttpReady(uiUrl))) {
-    logStep(`starting Vite dev server on ${uiUrl}`);
-    vite = spawnManaged(npmCommand(), ["run", "dev"], {
-      cwd: desktopDir,
-      shell: process.platform === "win32",
-      env: {
-        ...process.env,
-        VITE_ORCHESTRATOR_URL: apiUrl
-      }
-    });
-    vite.stdout?.on("data", (chunk) => process.stdout.write(chunk));
-    vite.stderr?.on("data", (chunk) => process.stderr.write(chunk));
-  }
-
-  const browserPort = await getFreePort();
-  const browserPath = await findBrowser();
-  logStep(`launching browser: ${browserPath}`);
-  const userDataDir = path.join(runtimeDir, "browser-profile");
-  await rm(userDataDir, { recursive: true, force: true });
-
-  const browser = spawnManaged(browserPath, [
-    "--headless=new",
-    "--disable-gpu",
-    "--window-size=1440,980",
-    "--no-first-run",
-    "--no-default-browser-check",
-    `--remote-debugging-port=${browserPort}`,
-    `--user-data-dir=${userDataDir}`,
-    "about:blank"
-  ]);
+  let browser: ChildProcess | null = null;
 
   try {
+    if (mode === "prod") {
+      logStep("building desktop production bundle");
+      await run(npmCommand(), ["run", "build"], {
+        cwd: desktopDir,
+        shell: process.platform === "win32",
+        env: {
+          ...process.env,
+          VITE_ORCHESTRATOR_URL: apiUrl
+        }
+      });
+      logStep("desktop production bundle built");
+    }
+
+    if (skipApiStart) {
+      logStep("waiting for existing API health");
+      await waitForHttp(`${apiUrl}/health`, 60_000);
+    } else {
+      logStep("starting local API");
+      await run(npmCommand(), ["run", "dev:start"], {
+        shell: process.platform === "win32",
+        env: {
+          ...process.env,
+          FEISHU_ADAPTER_ENABLED: "false",
+          FEISHU_DRY_RUN: "true",
+          OPENCLAW_AGENT_MODE: "mock",
+          AGENT_CLUSTER_CONFIG_PATH: "",
+          ORCHESTRATOR_CORS_ORIGINS: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+            "tauri://localhost"
+          ].join(",")
+        }
+      });
+    }
+
+    if (mode === "prod") {
+      logStep(`serving production bundle on ${uiUrl}`);
+      staticServer = await startStaticServer(path.join(desktopDir, "dist"), uiPort);
+    } else if (!(await isHttpReady(uiUrl))) {
+      logStep(`starting Vite dev server on ${uiUrl}`);
+      vite = spawnManaged(npmCommand(), ["run", "dev"], {
+        cwd: desktopDir,
+        shell: process.platform === "win32",
+        env: {
+          ...process.env,
+          VITE_ORCHESTRATOR_URL: apiUrl
+        }
+      });
+      vite.stdout?.on("data", (chunk) => process.stdout.write(chunk));
+      vite.stderr?.on("data", (chunk) => process.stderr.write(chunk));
+    }
+
+    const browserPort = await getFreePort();
+    const browserPath = await findBrowser();
+    logStep(`launching browser: ${browserPath}`);
+    const userDataDir = path.join(runtimeDir, "browser-profile");
+    await rm(userDataDir, { recursive: true, force: true });
+
+    browser = spawnManaged(
+      browserPath,
+      [
+        "--headless=new",
+        "--disable-gpu",
+        "--window-size=1440,980",
+        "--no-first-run",
+        "--no-default-browser-check",
+        `--remote-debugging-port=${browserPort}`,
+        `--user-data-dir=${userDataDir}`,
+        "about:blank"
+      ],
+      { stdio: "ignore" }
+    );
+
     logStep("waiting for browser DevTools");
     await waitForHttp(`http://127.0.0.1:${browserPort}/json/version`, 30_000);
     logStep("waiting for UI");
@@ -462,7 +532,7 @@ async function main() {
     const page = await openPage(browserPort, uiUrl);
     try {
       logStep("running browser UI flow");
-      const flow = await runUiFlow(page);
+      const flow = await withTimeout(runUiFlow(page), 120_000, "desktop UI browser flow");
       const screenshot = await page.send("Page.captureScreenshot", { format: "png" });
       await writeFile(screenshotPath, Buffer.from(screenshot.data, "base64"));
 
@@ -494,19 +564,25 @@ async function main() {
       page.close();
     }
   } finally {
-    browser.kill();
+    browser?.kill("SIGKILL");
     if (vite) {
       vite.kill();
     }
     if (staticServer) {
+      const server = staticServer;
       await new Promise<void>((resolve, reject) => {
-        staticServer.close((error) => (error ? reject(error) : resolve()));
+        server.close((error) => (error ? reject(error) : resolve()));
       });
     }
+    await releaseSmokeLock(smokeLock);
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
