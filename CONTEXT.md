@@ -11,6 +11,64 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Cancel Archival Consistency Checkpoint
+
+Cancelled jobs now enter the same session archival/retention ledger as
+successfully finalized jobs.
+
+Code changes:
+
+```text
+Updated packages/db/src/jobs.ts:
+  - cancelJob now calls archiveJobSession({ reason: "job_cancelled" }) after
+    writing the job.cancelled event;
+  - repeated cancel remains idempotent;
+  - already-cancelled jobs that predate this fix are repaired on a later cancel
+    request if archivedAt is still missing;
+  - concurrent cancel races that observe a just-cancelled but unarchived job also
+    repair the archive state.
+
+Updated scripts/smoke-cancel-job.ps1:
+  - verifies cancelled jobs have completedAt, archivedAt, retentionUntil;
+  - verifies cleanupStatus=retained;
+  - verifies retentionPolicy.archiveReason=job_cancelled;
+  - verifies exactly one job_event job.cancelled and one job_event job.archived;
+  - verifies job.archived appears after job.cancelled in the public timeline;
+  - verifies the second cancel stays idempotent and does not duplicate archive
+    job events.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm run smoke:cancel-job -> passed
+  job=JOB-20260531-431E4F26
+  waitingStatus=waiting_for_human
+  cancelStatus=cancelled
+  cleanupStatus=retained
+  archivedAt=2026-05-31T11:04:04.838Z
+  retentionUntil=2026-06-30T11:04:04.838Z
+  secondCancelReason=already_cancelled
+  timelineCancelEvents=1
+  timelineArchiveEvents=1
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: timeline since pagination.
+5. Then GET /jobs pagination/sort/search backlog.
+6. Then smoke lock orphan cleanup.
+7. Then Node engines/docs alignment.
+8. Then m2 recovery nightly CI.
+```
+
 ## 2026-05-31 Smoke Lock Checkpoint
 
 Implemented a shared local smoke lock for dev-stack smokes.

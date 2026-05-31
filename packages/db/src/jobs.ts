@@ -249,8 +249,15 @@ export async function cancelJob(input: {
   }
 
   if (job.status === "cancelled") {
+    const archivedJob = job.archivedAt
+      ? job
+      : await archiveJobSession({
+          jobId: input.jobId,
+          reason: "job_cancelled"
+        });
+
     return {
-      job,
+      job: archivedJob,
       changed: false,
       reason: "already_cancelled"
     } as const;
@@ -269,6 +276,19 @@ export async function cancelJob(input: {
 
   if (!result.rows[0]) {
     const latest = await getJob(input.jobId);
+    if (latest?.status === "cancelled" && !latest.archivedAt) {
+      const archivedJob = await archiveJobSession({
+        jobId: input.jobId,
+        reason: "job_cancelled"
+      });
+
+      return {
+        job: archivedJob,
+        changed: false,
+        reason: "already_cancelled"
+      } as const;
+    }
+
     return {
       job: latest,
       changed: false,
@@ -276,7 +296,6 @@ export async function cancelJob(input: {
     } as const;
   }
 
-  const cancelled = toJobRecord(result.rows[0]);
   await appendJobEvent(
     input.jobId,
     "job.cancelled",
@@ -290,8 +309,13 @@ export async function cancelJob(input: {
     }
   );
 
+  const archivedJob = await archiveJobSession({
+    jobId: input.jobId,
+    reason: "job_cancelled"
+  });
+
   return {
-    job: cancelled,
+    job: archivedJob,
     changed: true,
     reason: "cancelled"
   } as const;
