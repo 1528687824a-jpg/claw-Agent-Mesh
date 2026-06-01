@@ -11,6 +11,71 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Timeline Cursor Hardening Checkpoint
+
+Timeline pagination now has an opaque per-item cursor so clients can page
+without dropping events that share the same timestamp.
+
+Code changes:
+
+```text
+Updated packages/db/src/pipeline.ts:
+  - added InvalidTimelineCursorError;
+  - each public timeline item now includes cursor;
+  - GET timeline accepts cursor=<opaque>;
+  - cursor encodes { at, id };
+  - cursor pagination finds the exact timeline item and returns items after it;
+  - invalid/missing cursor targets produce timeline_cursor_not_found or
+    invalid_timeline_cursor.
+
+Updated apps/orchestrator-api/src/server.ts:
+  - validates optional timeline cursor;
+  - returns HTTP 400 for invalid timeline cursors.
+
+Updated apps/desktop-app/src/api.ts:
+  - TimelineItem includes cursor;
+  - JobTimeline summary includes cursor and nextCursor;
+  - getJobTimeline can pass an optional cursor.
+
+Updated scripts/smoke-timeline-since.ps1:
+  - preserves existing since assertions;
+  - inserts two same-created_at job_events as a deterministic same-timestamp
+    fixture;
+  - verifies item cursor pagination returns the second same-timestamp event;
+  - verifies invalid timeline cursor returns 400.
+
+Updated SETUP.md with cursor pagination guidance:
+  - since remains for compatibility;
+  - new clients should prefer per-item cursor.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm run smoke:timeline-since -> passed
+  job=JOB-20260601-FC40A5A8
+  totalTimelineItems=88
+  sinceMatchedItems=43
+  limitedReturnedItems=2
+  limitedHasMore=true
+  sameTimestampCursorIndex=86
+  cursorMatchedItems=1
+  invalidCursorStatus=400
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: m2 recovery nightly CI.
+5. Later: design waiting_for_human resume/accept/retry API.
+```
+
 ## 2026-05-31 Node Engines Docs Checkpoint
 
 Aligned Node/npm engine constraints with the actual dependency floor and current

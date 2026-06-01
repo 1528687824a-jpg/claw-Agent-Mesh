@@ -280,6 +280,7 @@ GET /jobs?prompt=<text>&status=<status>&ingressOrigin=<origin>&sort=createdAt&or
 POST /jobs
 GET /jobs/:jobId/timeline
 GET /jobs/:jobId/timeline?since=<ISO timestamp>&limit=<n>
+GET /jobs/:jobId/timeline?cursor=<cursor>&limit=<n>
 POST /jobs/:jobId/cancel
 ```
 
@@ -315,10 +316,13 @@ page.filters
 The cursor is a composite `(sort timestamp, job id)` key so jobs with the same
 timestamp do not fall between pages.
 
-Timeline pagination is incremental when `since` is present: the API returns
-events strictly after that ISO timestamp, in chronological order, up to `limit`.
-The response summary includes `matchedTimelineItems`, `hasMore`, and
-`nextSince` so clients can keep polling without reloading the full timeline.
+Timeline pagination is incremental when `since` or `cursor` is present.
+`since` is retained for compatibility and returns events strictly after that ISO
+timestamp. New clients should prefer the per-item opaque `cursor`, because it
+uses the exact timeline item identity and does not skip events that share the
+same timestamp. The response summary includes `matchedTimelineItems`, `hasMore`,
+`nextSince`, and `nextCursor` so clients can keep polling without reloading the
+full timeline.
 
 Browser UI integration smoke:
 
@@ -674,7 +678,9 @@ and verifies:
 1. all returned items are strictly after the cursor timestamp;
 2. returned order matches the full timeline order;
 3. limit=2 returns the first two matching events, not the latest two;
-4. summary.hasMore, summary.truncated, and summary.nextSince are correct.
+4. per-item cursor pagination preserves same-timestamp events;
+5. malformed timeline cursors return 400;
+6. summary.hasMore, summary.truncated, summary.nextSince, and summary.nextCursor are correct.
 ```
 
 M2.5 local quality/budget checks:

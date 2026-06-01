@@ -48,6 +48,7 @@ export type TimelineItem = {
   seq?: number;
   status?: string;
   payload?: Record<string, unknown>;
+  cursor: string;
 };
 
 export type JobTimeline = {
@@ -75,7 +76,9 @@ export type JobTimeline = {
     truncated: boolean;
     hasMore: boolean;
     since: string | null;
+    cursor: string | null;
     nextSince: string | null;
+    nextCursor: string | null;
   };
   timeline: TimelineItem[];
 };
@@ -171,10 +174,13 @@ export async function getJob(jobId: string) {
   return request<JobRecord>(`/jobs/${jobId}`);
 }
 
-export async function getJobTimeline(jobId: string, limit = 500, since?: string) {
+export async function getJobTimeline(jobId: string, limit = 500, since?: string, cursor?: string) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (since) {
     params.set("since", since);
+  }
+  if (cursor) {
+    params.set("cursor", cursor);
   }
   return request<JobTimeline>(`/jobs/${jobId}/timeline?${params.toString()}`);
 }

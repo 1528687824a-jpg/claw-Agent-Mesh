@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Buffer } from "node:buffer";
 import type {
   ArtifactRecord,
   ArtifactType,
@@ -539,6 +540,18 @@ type TimelineItem = {
   payload?: Record<string, unknown>;
 };
 
+type TimelineCursor = {
+  at: string;
+  id: string;
+};
+
+export class InvalidTimelineCursorError extends Error {
+  constructor(message = "invalid_timeline_cursor") {
+    super(message);
+    this.name = "InvalidTimelineCursorError";
+  }
+}
+
 function iso(value: unknown): string | null {
   if (value instanceof Date) {
     return value.toISOString();
@@ -549,18 +562,57 @@ function iso(value: unknown): string | null {
   return null;
 }
 
-function compactItem(item: TimelineItem): Omit<TimelineItem, "order"> {
-  const { order: _order, ...publicItem } = item;
-  return publicItem;
+function encodeTimelineCursor(item: TimelineItem) {
+  return Buffer.from(JSON.stringify({ at: item.at, id: item.id }), "utf8").toString("base64url");
 }
 
-export async function getJobTimeline(jobId: string, options: { limit?: number; since?: string } = {}) {
+function decodeTimelineCursor(value: string): TimelineCursor {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+  } catch {
+    throw new InvalidTimelineCursorError();
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new InvalidTimelineCursorError();
+  }
+
+  const cursor = parsed as Record<string, unknown>;
+  if (
+    typeof cursor.at !== "string" ||
+    Number.isNaN(Date.parse(cursor.at)) ||
+    typeof cursor.id !== "string" ||
+    !cursor.id
+  ) {
+    throw new InvalidTimelineCursorError();
+  }
+
+  return {
+    at: new Date(cursor.at).toISOString(),
+    id: cursor.id
+  };
+}
+
+function compactItem(item: TimelineItem): Omit<TimelineItem, "order"> & { cursor: string } {
+  const { order: _order, ...publicItem } = item;
+  return {
+    ...publicItem,
+    cursor: encodeTimelineCursor(item)
+  };
+}
+
+export async function getJobTimeline(
+  jobId: string,
+  options: { limit?: number; since?: string; cursor?: string } = {}
+) {
   const details = await getJobDetails(jobId);
   if (!details.job) {
     return { job: null };
   }
   const since = options.since ? new Date(options.since).toISOString() : null;
   const sinceTime = since ? Date.parse(since) : null;
+  const cursor = options.cursor ? decodeTimelineCursor(options.cursor) : null;
 
   const timeline: TimelineItem[] = [];
   let order = 0;
@@ -695,14 +747,28 @@ export async function getJobTimeline(jobId: string, options: { limit?: number; s
     return left.order - right.order;
   });
   const limit = Math.min(Math.max(options.limit ?? 200, 1), 1000);
-  const matched = sinceTime === null
-    ? sorted
-    : sorted.filter((item) => Date.parse(item.at) > sinceTime);
-  const limited = sinceTime === null
-    ? (sorted.length > limit ? sorted.slice(sorted.length - limit) : sorted)
-    : matched.slice(0, limit);
+  const cursorIndex = cursor
+    ? sorted.findIndex((item) => item.id === cursor.id && item.at === cursor.at)
+    : -1;
+  if (cursor && cursorIndex < 0) {
+    throw new InvalidTimelineCursorError("timeline_cursor_not_found");
+  }
+
+  const matched = cursor
+    ? sorted.slice(cursorIndex + 1)
+    : sinceTime === null
+      ? sorted
+      : sorted.filter((item) => Date.parse(item.at) > sinceTime);
+  const limited = cursor || sinceTime !== null
+    ? matched.slice(0, limit)
+    : (sorted.length > limit ? sorted.slice(sorted.length - limit) : sorted);
   const hasMore = matched.length > limited.length;
   const nextSince = limited.length > 0 ? limited[limited.length - 1].at : since;
+  const nextCursor = limited.length > 0
+    ? encodeTimelineCursor(limited[limited.length - 1])
+    : cursor
+      ? options.cursor ?? null
+      : null;
 
   return {
     job: {
@@ -729,7 +795,9 @@ export async function getJobTimeline(jobId: string, options: { limit?: number; s
       truncated: hasMore,
       hasMore,
       since,
-      nextSince
+      cursor: options.cursor ?? null,
+      nextSince,
+      nextCursor
     },
     timeline: limited.map(compactItem)
   };

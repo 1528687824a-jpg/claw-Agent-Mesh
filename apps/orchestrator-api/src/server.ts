@@ -11,7 +11,12 @@ import {
   listJobs
 } from "../../../packages/db/src/jobs";
 import { markModelCallFailedUnknownOutcome } from "../../../packages/db/src/model-calls";
-import { getGroupMessagesForJob, getJobDetails, getJobTimeline } from "../../../packages/db/src/pipeline";
+import {
+  getGroupMessagesForJob,
+  getJobDetails,
+  getJobTimeline,
+  InvalidTimelineCursorError
+} from "../../../packages/db/src/pipeline";
 import { INGRESS_ORIGINS, JOB_STATUSES } from "../../../packages/shared/src/types";
 import { launchDbos, startJobWorkflow } from "./dbos-runtime";
 import { ingressAdapters } from "./adapters";
@@ -25,7 +30,8 @@ const unstickModelCallSchema = z.object({
 
 const timelineQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).optional(),
-  since: z.string().datetime({ offset: true }).optional()
+  since: z.string().datetime({ offset: true }).optional(),
+  cursor: z.string().min(1).max(2000).optional()
 });
 
 const listJobsQuerySchema = z.object({
@@ -269,7 +275,8 @@ async function main() {
       const query = timelineQuerySchema.parse(request.query);
       const timeline = await getJobTimeline(request.params.jobId, {
         limit: query.limit,
-        since: query.since
+        since: query.since,
+        cursor: query.cursor
       });
 
       if (!timeline.job) {
@@ -279,6 +286,11 @@ async function main() {
 
       response.json(timeline);
     } catch (error) {
+      if (error instanceof InvalidTimelineCursorError) {
+        response.status(400).json({ error: error.message });
+        return;
+      }
+
       next(error);
     }
   });

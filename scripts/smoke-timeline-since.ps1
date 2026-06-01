@@ -70,6 +70,28 @@ Assert-True -Condition ([bool]$created.jobId) -Message "jobId missing"
 $job = Wait-ForTerminalStatus -JobId $created.jobId
 Assert-Equal -Actual $job.status -Expected "succeeded" -Message "job terminal status"
 
+$sameTimestampFixture = @'
+import { closePool, pool } from "./packages/db/src/pool";
+
+const jobId = process.argv[2];
+if (!jobId) {
+  throw new Error("job id missing");
+}
+
+const stamp = new Date().toISOString();
+await pool.query(
+  `insert into agent.job_events (job_id, event_type, payload, created_at)
+   values
+     ($1, 'smoke.same_timestamp_a', '{}'::jsonb, $2::timestamptz),
+     ($1, 'smoke.same_timestamp_b', '{}'::jsonb, $2::timestamptz)`,
+  [jobId, stamp]
+);
+
+await closePool();
+'@
+
+$sameTimestampFixture | npx tsx - $created.jobId | Out-Host
+
 $fullTimeline = Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($created.jobId)/timeline?limit=1000"
 $fullItems = @($fullTimeline.timeline)
 Assert-True -Condition ($fullItems.Count -gt 6) -Message "timeline should have enough events for since pagination"
@@ -78,6 +100,8 @@ Assert-Equal -Actual $fullTimeline.summary.matchedTimelineItems -Expected $fullI
 Assert-Equal -Actual $fullTimeline.summary.hasMore -Expected $false -Message "full timeline hasMore"
 Assert-Equal -Actual $fullTimeline.summary.since -Expected $null -Message "full timeline since should be null"
 Assert-Equal -Actual $fullTimeline.summary.nextSince -Expected $fullItems[-1].at -Message "full timeline nextSince"
+Assert-True -Condition ([bool]$fullItems[-1].cursor) -Message "full timeline item cursor"
+Assert-Equal -Actual $fullTimeline.summary.nextCursor -Expected $fullItems[-1].cursor -Message "full timeline nextCursor"
 
 $cursorIndex = [Math]::Floor($fullItems.Count / 2)
 $cursor = $fullItems[$cursorIndex].at
@@ -111,8 +135,39 @@ Assert-Equal -Actual $limitedTimeline.summary.returnedTimelineItems -Expected 2 
 Assert-Equal -Actual $limitedTimeline.summary.hasMore -Expected $true -Message "limited hasMore"
 Assert-Equal -Actual $limitedTimeline.summary.truncated -Expected $true -Message "limited truncated"
 Assert-Equal -Actual $limitedTimeline.summary.nextSince -Expected $limitedItems[-1].at -Message "limited nextSince"
+Assert-Equal -Actual $limitedTimeline.summary.nextCursor -Expected $limitedItems[-1].cursor -Message "limited nextCursor"
 Assert-Equal -Actual $limitedItems[0].id -Expected $expectedAfter[0].id -Message "limited first item"
 Assert-Equal -Actual $limitedItems[1].id -Expected $expectedAfter[1].id -Message "limited second item"
+
+$sameTimestampIndex = -1
+for ($i = 0; $i -lt ($fullItems.Count - 1); $i++) {
+  if ($fullItems[$i].at -eq $fullItems[$i + 1].at) {
+    $sameTimestampIndex = $i
+    break
+  }
+}
+Assert-True -Condition ($sameTimestampIndex -ge 0) -Message "timeline should contain a same-timestamp pair for cursor hardening"
+
+$itemCursor = $fullItems[$sameTimestampIndex].cursor
+$encodedItemCursor = [System.Uri]::EscapeDataString($itemCursor)
+$cursorTimeline = Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($created.jobId)/timeline?limit=1000&cursor=$encodedItemCursor"
+$cursorItems = @($cursorTimeline.timeline)
+$expectedAfterItemCursor = @($fullItems | Select-Object -Skip ($sameTimestampIndex + 1))
+Assert-Equal -Actual $cursorTimeline.summary.cursor -Expected $itemCursor -Message "item cursor echo"
+Assert-Equal -Actual $cursorTimeline.summary.matchedTimelineItems -Expected $expectedAfterItemCursor.Count -Message "item cursor matched count"
+Assert-Equal -Actual $cursorItems[0].id -Expected $expectedAfterItemCursor[0].id -Message "item cursor first id"
+Assert-Equal -Actual $cursorItems[0].at -Expected $expectedAfterItemCursor[0].at -Message "item cursor preserves same timestamp next event"
+Assert-Equal -Actual $cursorTimeline.summary.nextCursor -Expected $cursorItems[-1].cursor -Message "item cursor nextCursor"
+
+$invalidCursorStatus = $null
+try {
+  Invoke-WebRequest `
+    -Uri "http://localhost:3000/jobs/$($created.jobId)/timeline?cursor=not-a-valid-cursor" `
+    -UseBasicParsing | Out-Null
+} catch {
+  $invalidCursorStatus = [int]$_.Exception.Response.StatusCode
+}
+Assert-Equal -Actual $invalidCursorStatus -Expected 400 -Message "invalid timeline cursor status"
 
 [pscustomobject]@{
   ok = $true
@@ -124,12 +179,18 @@ Assert-Equal -Actual $limitedItems[1].id -Expected $expectedAfter[1].id -Message
   limitedReturnedItems = $limitedTimeline.summary.returnedTimelineItems
   limitedHasMore = $limitedTimeline.summary.hasMore
   nextSince = $limitedTimeline.summary.nextSince
+  sameTimestampCursorIndex = $sameTimestampIndex
+  cursorMatchedItems = $cursorTimeline.summary.matchedTimelineItems
+  invalidCursorStatus = $invalidCursorStatus
   checked = @(
     "timeline_full_summary",
     "timeline_since_filter",
     "timeline_since_order",
     "timeline_since_limit",
     "timeline_since_has_more",
-    "timeline_since_next_cursor"
+    "timeline_since_next_cursor",
+    "timeline_item_cursor",
+    "timeline_cursor_preserves_same_timestamp_event",
+    "timeline_invalid_cursor_400"
   )
 } | ConvertTo-Json -Depth 4
