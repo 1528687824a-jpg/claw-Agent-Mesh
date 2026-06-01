@@ -11,6 +11,42 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-01 Final Hosted CI Confirmation Checkpoint
+
+Final observed state after the GitHub remote/CI work:
+
+```text
+Commit 71a49c4 Record hosted CI success:
+  run URL: https://github.com/1528687824a-jpg/claw-Agent-Mesh/actions/runs/26766148326
+  status: success
+
+Jobs:
+  Node and smoke checks: success
+  Docker quickstart: success
+    Desktop UI production smoke: success
+```
+
+Operational note:
+
+```text
+This checkpoint itself is intended to be committed with [skip ci], because it is
+only recording the final CI confirmation. Without skipping CI, every final
+context update would create another workflow run and an infinite bookkeeping
+loop.
+```
+
+Next ordered tasks:
+
+```text
+1. Remaining alpha gate A: operator explicitly authorizes real provider spend,
+   configures M3 env, then run npm run smoke:m3-real-provider.
+2. Later with explicit authorization: OpenClaw real-mode validation across all
+   four routing modes.
+3. Optional polish after gates: app icon/signing/release tag notes and first
+   public alpha release preparation.
+4. v1.1/backlog: waiting_for_human resume API.
+```
+
 ## 2026-06-01 GitHub CI Desktop Smoke Fix Checkpoint
 
 Observed hosted CI state after pushing GitHub remote setup:
