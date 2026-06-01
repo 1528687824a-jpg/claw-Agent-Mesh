@@ -1,0 +1,7 @@
+{
+  "prompt": "Run a short discussion about the best first demo for a downloadable multi-agent orchestration platform. Have the agents weigh Docker quickstart, desktop UI, and Feishu integration, then synthesize a recommendation.",
+  "requesterId": "demo-master-slave-discussion",
+  "routingMode": "master_slave_discussion",
+  "maxModelCalls": 30,
+  "discussionRounds": 2
+}

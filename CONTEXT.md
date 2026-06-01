@@ -202,6 +202,55 @@ Next ordered tasks:
    alpha path.
 ```
 
+## 2026-06-01 Demo Job Templates Checkpoint
+
+Added ready-to-post demo job bodies for all four routing modes.
+
+Changes:
+
+```text
+Added examples/demo-jobs/supervisor-pipeline.json
+Added examples/demo-jobs/pipeline.json
+Added examples/demo-jobs/classic-master-slave.json
+Added examples/demo-jobs/master-slave-discussion.json
+Added examples/demo-jobs/README.md with bash/curl and PowerShell usage.
+
+Updated README.md and QUICKSTART.md to point first-time users at
+examples/demo-jobs/.
+```
+
+Validation:
+
+```text
+Started local mock API with:
+  FEISHU_ADAPTER_ENABLED=false
+  FEISHU_DRY_RUN=true
+  OPENCLAW_AGENT_MODE=mock
+
+Posted each JSON file to POST /jobs, polled terminal status, then read messages
+and timeline:
+  supervisor-pipeline.json        JOB-20260601-B2364DD6 succeeded messages=6 timelineItems=126
+  pipeline.json                   JOB-20260601-73B1C593 succeeded messages=4 timelineItems=85
+  classic-master-slave.json       JOB-20260601-C85214DB succeeded messages=4 timelineItems=85
+  master-slave-discussion.json    JOB-20260601-CB8BE334 succeeded messages=5 timelineItems=122
+
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. User-side alpha gate A: configure M3 real provider env and run
+   npm run smoke:m3-real-provider.
+2. User-side alpha gate B: configure git remote, push a branch, and watch
+   GitHub Actions to green.
+3. Current Codex-side product task: move desktop UI timeline consumption to
+   cursor and add since/until filters.
+4. Later/v1.1: waiting_for_human resume API. m2 nightly CI remains off the
+   alpha path.
+```
+
 ## 2026-05-31 Timeline Cursor Hardening Checkpoint
 
 Timeline pagination now has an opaque per-item cursor so clients can page

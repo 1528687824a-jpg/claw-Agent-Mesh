@@ -69,6 +69,9 @@ Equivalent one-line `curl` create call:
 curl -s -X POST http://localhost:3000/jobs -H 'content-type: application/json' -d '{"prompt":"Plan a short launch article for a new AI writing tool","requesterId":"quickstart","routingMode":"supervisor_pipeline"}'
 ```
 
+Ready-made request bodies for all four routing modes live under
+`examples/demo-jobs/`.
+
 Stop the stack:
 
 ```powershell
@@ -160,6 +163,7 @@ helper scripts require explicit `FEISHU_PUBLIC_*` environment variables.
 
 ```text
 apps/                  API, worker, and desktop client.
+examples/              Pasteable demo jobs and M3 interview answers.
 packages/              Shared DB and type packages.
 scripts/               Dev/start/smoke/maintenance scripts.
 platform-assets/       Agent templates and marked vendor workarounds.

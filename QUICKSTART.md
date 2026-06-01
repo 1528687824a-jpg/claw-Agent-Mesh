@@ -70,6 +70,12 @@ curl -s -X POST http://localhost:3000/jobs \
   -d '{"prompt":"Plan a short launch article for a new AI writing tool","requesterId":"quickstart","routingMode":"supervisor_pipeline"}'
 ```
 
+Ready-made examples for all four routing modes are in:
+
+```text
+examples/demo-jobs/
+```
+
 Expected shape:
 
 ```json

@@ -1,0 +1,7 @@
+{
+  "prompt": "Ask independent specialist agents to produce launch-message angles for Agent OpenClaw, then synthesize the strongest positioning. Compare reliability, onboarding speed, and operator visibility.",
+  "requesterId": "demo-classic-master-slave",
+  "routingMode": "classic_master_slave",
+  "maxModelCalls": 20,
+  "classicFinalGateEnabled": true
+}

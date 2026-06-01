@@ -1,0 +1,6 @@
+{
+  "prompt": "Create a concise launch plan for a local-first AI writing assistant. Include a positioning paragraph, three launch checklist items, and one image brief for a product announcement card.",
+  "requesterId": "demo-supervisor-pipeline",
+  "routingMode": "supervisor_pipeline",
+  "maxModelCalls": 20
+}

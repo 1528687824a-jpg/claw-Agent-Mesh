@@ -1,0 +1,6 @@
+{
+  "prompt": "Turn this product idea into a short publishable update: a desktop control console for durable multi-agent jobs. Keep the final answer practical and organized for a product changelog.",
+  "requesterId": "demo-pipeline",
+  "routingMode": "pipeline",
+  "maxModelCalls": 20
+}
