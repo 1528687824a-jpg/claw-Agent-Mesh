@@ -137,6 +137,10 @@ as a separate quickstart proof. `npm run smoke:feishu-public` is a private
 reference-deployment check for the author's public webhook path, not a product
 gate.
 
+Shared dev-stack smoke locks live under `.runtime/locks`. The PowerShell wrapper
+and desktop UI smoke write lock owner metadata and remove stale lock files when
+the recorded process is no longer alive.
+
 ## M3 Config Generation Smoke
 
 M3 begins as a backend/CLI vertical slice. It does not require the Tauri UI.

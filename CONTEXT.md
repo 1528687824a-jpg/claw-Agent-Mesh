@@ -11,6 +11,62 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Smoke Lock Orphan Cleanup Checkpoint
+
+Dev-stack smoke locks now recover from stale/orphan lock files.
+
+Code changes:
+
+```text
+Updated scripts/run-with-smoke-lock.ps1:
+  - reads existing .runtime/locks/<name>.lock metadata;
+  - extracts owner pid when possible;
+  - removes the lock file when the pid is missing, invalid, or no longer alive;
+  - keeps exclusive FileShare=None acquisition as the actual live-lock authority.
+
+Updated scripts/smoke-desktop-ui.ts:
+  - handles EEXIST from the TypeScript lock path;
+  - reads lock metadata;
+  - removes malformed/dead-pid lock files;
+  - retries acquire after stale cleanup;
+  - still refuses the lock when the recorded process is alive.
+
+Updated SETUP.md:
+  - documented .runtime/locks stale cleanup behavior.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+PowerShell stale lock test -> passed
+  wrote .runtime/locks/dev-stack.lock with pid=999999
+  run-with-smoke-lock removed stale lock
+  smoke-tauri-shell ran successfully
+
+TypeScript stale lock test -> passed
+  wrote .runtime/locks/dev-stack.lock with pid=999999
+  npm run smoke:desktop-ui removed stale lock and acquired dev-stack
+  job=JOB-20260601-AA29DF53
+  filteredStatuses=all cancelled
+  timelineItems=54
+
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: Node engines/docs alignment.
+5. Then timeline cursor composite-key hardening.
+6. Then m2 recovery nightly CI.
+7. Later: design waiting_for_human resume/accept/retry API.
+```
+
 ## 2026-05-31 Prompt Search Boundary Checkpoint
 
 Extended the job-list smoke coverage to lock down prompt search behavior for

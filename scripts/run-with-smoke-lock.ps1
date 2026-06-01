@@ -24,6 +24,36 @@ if (-not (Test-Path -LiteralPath $resolvedScriptPath)) {
 
 New-Item -ItemType Directory -Force -Path $lockDir | Out-Null
 
+function Test-ProcessAlive {
+  param([int]$ProcessId)
+
+  if ($ProcessId -le 0) {
+    return $false
+  }
+
+  return [bool](Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+}
+
+if (Test-Path -LiteralPath $lockPath) {
+  $owner = Get-Content -LiteralPath $lockPath -Raw -ErrorAction SilentlyContinue
+  $ownerPid = $null
+  if ($owner) {
+    try {
+      $ownerData = $owner | ConvertFrom-Json
+      if ($ownerData.pid -as [int]) {
+        $ownerPid = [int]$ownerData.pid
+      }
+    } catch {
+      $ownerPid = $null
+    }
+  }
+
+  if (-not $ownerPid -or -not (Test-ProcessAlive -ProcessId $ownerPid)) {
+    Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
+    Write-Output "Removed stale smoke lock '$Name'"
+  }
+}
+
 $stream = $null
 try {
   try {

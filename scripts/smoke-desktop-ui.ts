@@ -28,6 +28,12 @@ type SmokeLock = {
   handle: FileHandle;
 };
 
+type SmokeLockMetadata = {
+  pid?: unknown;
+  startedAt?: unknown;
+  command?: unknown;
+};
+
 function logStep(message: string) {
   console.log(`[desktop-ui-smoke] ${message}`);
 }
@@ -212,8 +218,7 @@ async function acquireSmokeLock(name: string): Promise<SmokeLock> {
   const lockPath = path.join(lockDir, `${name}.lock`);
   await mkdir(lockDir, { recursive: true });
 
-  try {
-    const handle = await open(lockPath, "wx");
+  const writeLockMetadata = async (handle: FileHandle) => {
     await handle.writeFile(
       JSON.stringify(
         {
@@ -225,9 +230,21 @@ async function acquireSmokeLock(name: string): Promise<SmokeLock> {
         2
       )
     );
+  };
+
+  try {
+    const handle = await open(lockPath, "wx");
+    await writeLockMetadata(handle);
     logStep(`acquired smoke lock '${name}'`);
     return { path: lockPath, handle };
   } catch (error: any) {
+    if (error?.code === "EEXIST" && await removeStaleSmokeLock(lockPath)) {
+      const handle = await open(lockPath, "wx");
+      await writeLockMetadata(handle);
+      logStep(`removed stale smoke lock and acquired '${name}'`);
+      return { path: lockPath, handle };
+    }
+
     let owner = "";
     try {
       owner = await readFile(lockPath, "utf8");
@@ -236,6 +253,33 @@ async function acquireSmokeLock(name: string): Promise<SmokeLock> {
     }
     throw new Error(`Smoke lock '${name}' is already held. Lock file: ${lockPath}\n${owner || error.message}`);
   }
+}
+
+function isProcessAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: any) {
+    return error?.code === "EPERM";
+  }
+}
+
+async function removeStaleSmokeLock(lockPath: string) {
+  let owner: SmokeLockMetadata | null = null;
+  try {
+    owner = JSON.parse(await readFile(lockPath, "utf8")) as SmokeLockMetadata;
+  } catch {
+    await rm(lockPath, { force: true });
+    return true;
+  }
+
+  const pid = typeof owner.pid === "number" ? owner.pid : null;
+  if (!pid || !isProcessAlive(pid)) {
+    await rm(lockPath, { force: true });
+    return true;
+  }
+
+  return false;
 }
 
 async function releaseSmokeLock(lock: SmokeLock | null) {
