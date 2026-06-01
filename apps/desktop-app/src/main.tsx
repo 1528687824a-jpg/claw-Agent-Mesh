@@ -17,6 +17,7 @@ import "./styles.css";
 
 type ApiState = "checking" | "online" | "offline";
 type JobStatusFilter = "all" | "running" | "waiting_for_human" | "cancelled";
+type JobTimeFilter = "all" | "24h" | "7d" | "custom";
 
 const routingModes: RoutingMode[] = [
   "supervisor_pipeline",
@@ -40,6 +41,13 @@ const jobStatusFilters: Array<{ id: JobStatusFilter; label: string; status?: Job
   { id: "running", label: "Running", status: "running" },
   { id: "waiting_for_human", label: "Waiting", status: "waiting_for_human" },
   { id: "cancelled", label: "Cancelled", status: "cancelled" }
+];
+
+const jobTimeFilters: Array<{ id: JobTimeFilter; label: string }> = [
+  { id: "all", label: "All Time" },
+  { id: "24h", label: "24h" },
+  { id: "7d", label: "7d" },
+  { id: "custom", label: "Custom" }
 ];
 
 function formatTime(value: string | null | undefined) {
@@ -67,6 +75,12 @@ function statusTone(status: JobStatus) {
   return "active";
 }
 
+function localDateTimeToIso(value: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 function App() {
   const [apiState, setApiState] = useState<ApiState>("checking");
   const [prompt, setPrompt] = useState("Draft a short launch note for a tiny multi-agent product.");
@@ -75,6 +89,9 @@ function App() {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [jobListPage, setJobListPage] = useState<ListJobsResponse["page"] | null>(null);
   const [jobStatusFilter, setJobStatusFilter] = useState<JobStatusFilter>("all");
+  const [jobTimeFilter, setJobTimeFilter] = useState<JobTimeFilter>("all");
+  const [customSince, setCustomSince] = useState("");
+  const [customUntil, setCustomUntil] = useState("");
   const [jobPromptFilter, setJobPromptFilter] = useState("");
   const [selectedJobId, setSelectedJobId] = useState("");
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
@@ -97,12 +114,31 @@ function App() {
   const activeStatusFilter = jobStatusFilters.find((filter) => filter.id === jobStatusFilter);
   const trimmedJobPromptFilter = jobPromptFilter.trim();
 
+  function getJobTimeWindow() {
+    if (jobTimeFilter === "24h") {
+      return { since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), until: undefined };
+    }
+    if (jobTimeFilter === "7d") {
+      return { since: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), until: undefined };
+    }
+    if (jobTimeFilter === "custom") {
+      return {
+        since: localDateTimeToIso(customSince),
+        until: localDateTimeToIso(customUntil)
+      };
+    }
+    return { since: undefined, until: undefined };
+  }
+
   async function refreshJobs(preferredJobId = selectedJobId) {
     const requestSeq = ++jobsRequestSeq.current;
+    const timeWindow = getJobTimeWindow();
     const response = await listJobs({
       limit: 50,
       status: activeStatusFilter?.status,
       prompt: trimmedJobPromptFilter || undefined,
+      since: timeWindow.since,
+      until: timeWindow.until,
       sort: "createdAt",
       order: "desc"
     });
@@ -125,10 +161,13 @@ function App() {
     setError(null);
     try {
       const requestSeq = ++jobsRequestSeq.current;
+      const timeWindow = getJobTimeWindow();
       const response = await listJobs({
         limit: 50,
         status: activeStatusFilter?.status,
         prompt: trimmedJobPromptFilter || undefined,
+        since: timeWindow.since,
+        until: timeWindow.until,
         sort: "createdAt",
         order: "desc",
         cursor: jobListPage.nextCursor
@@ -156,9 +195,27 @@ function App() {
       return;
     }
 
-    const [job, nextTimeline] = await Promise.all([getJob(targetJobId), getJobTimeline(targetJobId)]);
+    const timelineCursor =
+      timeline?.job.id === targetJobId && timeline.summary.nextCursor
+        ? timeline.summary.nextCursor
+        : undefined;
+    const [job, nextTimeline] = await Promise.all([
+      getJob(targetJobId),
+      getJobTimeline(targetJobId, 500, undefined, timelineCursor)
+    ]);
     setSelectedJob(job);
-    setTimeline(nextTimeline);
+    setTimeline((currentTimeline) => {
+      if (!timelineCursor || currentTimeline?.job.id !== targetJobId) {
+        return nextTimeline;
+      }
+
+      const existingIds = new Set(currentTimeline.timeline.map((item) => item.id));
+      const appendedItems = nextTimeline.timeline.filter((item) => !existingIds.has(item.id));
+      return {
+        ...nextTimeline,
+        timeline: [...currentTimeline.timeline, ...appendedItems]
+      };
+    });
   }
 
   async function refreshAll(targetJobId = selectedJobId) {
@@ -221,12 +278,12 @@ function App() {
       });
     }, 4000);
     return () => window.clearInterval(interval);
-  }, [apiState, selectedJobId, jobStatusFilter, trimmedJobPromptFilter]);
+  }, [apiState, selectedJobId, jobStatusFilter, jobTimeFilter, customSince, customUntil, trimmedJobPromptFilter]);
 
   useEffect(() => {
     if (apiState !== "online") return;
     refreshAll("").catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
-  }, [jobStatusFilter, trimmedJobPromptFilter, apiState]);
+  }, [jobStatusFilter, jobTimeFilter, customSince, customUntil, trimmedJobPromptFilter, apiState]);
 
   return (
     <main className="shell">
@@ -316,6 +373,43 @@ function App() {
               value={jobPromptFilter}
               onChange={(event) => setJobPromptFilter(event.target.value)}
             />
+            <div className="filterSegments timeFilterSegments" aria-label="Job created time filter">
+              {jobTimeFilters.map((filter) => (
+                <button
+                  key={filter.id}
+                  className={filter.id === jobTimeFilter ? "filterSegment active" : "filterSegment"}
+                  data-time-filter={filter.id}
+                  type="button"
+                  onClick={() => setJobTimeFilter(filter.id)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            {jobTimeFilter === "custom" ? (
+              <div className="customTimeFilters">
+                <label htmlFor="jobSince">Since</label>
+                <input
+                  id="jobSince"
+                  type="datetime-local"
+                  value={customSince}
+                  onChange={(event) => {
+                    setJobTimeFilter("custom");
+                    setCustomSince(event.target.value);
+                  }}
+                />
+                <label htmlFor="jobUntil">Until</label>
+                <input
+                  id="jobUntil"
+                  type="datetime-local"
+                  value={customUntil}
+                  onChange={(event) => {
+                    setJobTimeFilter("custom");
+                    setCustomUntil(event.target.value);
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
           <ol>
             {jobs.map((job) => (

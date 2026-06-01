@@ -226,6 +226,17 @@ select {
   color: #ffffff;
 }
 
+.customTimeFilters {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.customTimeFilters label {
+  font-size: 12px;
+}
+
 .jobList ol,
 .timeline {
   list-style: none;
@@ -460,6 +471,7 @@ select {
 @media (max-width: 900px) {
   .dashboard,
   .composerControls,
+  .customTimeFilters,
   .stats,
   .timelineItem {
     grid-template-columns: 1fr;

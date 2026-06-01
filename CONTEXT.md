@@ -251,6 +251,77 @@ Next ordered tasks:
    alpha path.
 ```
 
+## 2026-06-01 Desktop Timeline Cursor And Time Filters Checkpoint
+
+Desktop UI now uses the backend timeline cursor path and exposes job-created
+time-window filters.
+
+Changes:
+
+```text
+Updated apps/desktop-app/src/main.tsx:
+  - added job time filters: All Time, 24h, 7d, Custom;
+  - Custom exposes since/until datetime-local inputs;
+  - listJobs calls now pass since/until when a time window is active;
+  - same-job timeline refreshes now pass summary.nextCursor;
+  - returned cursor-page items are appended to existing timeline items.
+
+Updated apps/desktop-app/src/styles.css:
+  - added stable custom since/until filter layout.
+
+Updated scripts/smoke-desktop-ui.ts:
+  - verifies status + prompt + time-window filters;
+  - patches browser fetch during smoke and asserts timeline requests include
+    cursor=;
+  - returns timelineCursorRequests in the smoke result.
+
+Updated SETUP.md:
+  - desktop Jobs pane now documents time-window filters;
+  - desktop timeline refresh now documents nextCursor usage.
+
+Updated docs/assets/desktop-ui-mvp.png with the new UI screenshot.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm --prefix apps/desktop-app run build -> passed
+npm run smoke:desktop-ui -> passed
+  jobId=JOB-20260601-75D1E7D9
+  filteredJobVisible=true
+  timeFilterVisible=true
+  customSinceVisible=true
+  timelineCursorRequests=6
+  timelineItems=52
+npm run smoke:desktop-ui-prod -> passed
+  jobId=JOB-20260601-31B6CD9E
+  filteredJobVisible=true
+  timeFilterVisible=true
+  customSinceVisible=true
+  timelineCursorRequests=6
+  timelineItems=54
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+
+Note: an initial attempt ran dev/prod desktop smokes in parallel and failed due
+to the shared dev-stack smoke lock / browser context churn. Sequential reruns
+passed. Keep these smokes sequential.
+```
+
+Next ordered tasks:
+
+```text
+1. User-side alpha gate A: configure M3 real provider env and run
+   npm run smoke:m3-real-provider.
+2. User-side alpha gate B: configure git remote, push a branch, and watch
+   GitHub Actions to green.
+3. If continuing Codex-only before A/B are available: add a short M3 real
+   provider operator checklist and expected failure triage to make A easier.
+4. Later: Rust/Tauri installer proof and OpenClaw real-mode broader validation.
+5. v1.1: waiting_for_human resume API. m2 nightly CI remains off the alpha path.
+```
+
 ## 2026-05-31 Timeline Cursor Hardening Checkpoint
 
 Timeline pagination now has an opaque per-item cursor so clients can page

@@ -285,8 +285,8 @@ POST /jobs/:jobId/cancel
 ```
 
 The Jobs pane exposes the common list controls directly: All, Running, Waiting,
-Cancelled, plus prompt search. Less common list controls such as since/until and
-sort/order remain API-level controls for now.
+Cancelled, prompt search, and created-at time windows (All Time, 24h, 7d, or
+custom since/until). Sort/order remain API-level controls for now.
 
 Job listing supports cursor pagination and lightweight filters:
 
@@ -320,9 +320,11 @@ Timeline pagination is incremental when `since` or `cursor` is present.
 `since` is retained for compatibility and returns events strictly after that ISO
 timestamp. New clients should prefer the per-item opaque `cursor`, because it
 uses the exact timeline item identity and does not skip events that share the
-same timestamp. The response summary includes `matchedTimelineItems`, `hasMore`,
-`nextSince`, and `nextCursor` so clients can keep polling without reloading the
-full timeline.
+same timestamp. The desktop UI now uses `summary.nextCursor` for same-job
+timeline refreshes and appends new items instead of reloading the full timeline.
+The response summary includes `matchedTimelineItems`, `hasMore`, `nextSince`,
+and `nextCursor` so clients can keep polling without reloading the full
+timeline.
 
 Browser UI integration smoke:
 
@@ -333,8 +335,9 @@ npm run smoke:desktop-ui-prod
 
 This starts the local mock-mode API, starts or reuses the Vite desktop UI,
 opens it in a headless Edge/Chrome browser through DevTools, creates a job from
-the UI, cancels it from the UI, verifies the cancelled state and timeline render,
-and writes a screenshot under `.runtime/desktop-ui-smoke/`.
+the UI, cancels it from the UI, verifies search/status/time-window filters,
+verifies a timeline cursor request was used, verifies the timeline render, and
+writes a screenshot under `.runtime/desktop-ui-smoke/`.
 
 `smoke:desktop-ui-prod` first runs the production Vite build, serves
 `apps/desktop-app/dist` on `http://127.0.0.1:5174`, and repeats the same browser

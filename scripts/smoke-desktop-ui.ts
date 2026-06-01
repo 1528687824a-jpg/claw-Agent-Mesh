@@ -393,6 +393,20 @@ async function runUiFlow(page: CdpClient) {
         element.dispatchEvent(new Event("input", { bubbles: true }));
         element.dispatchEvent(new Event("change", { bubbles: true }));
       };
+      const formatDateTimeLocal = (date) => {
+        const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+        return local.toISOString().slice(0, 16);
+      };
+
+      window.__agentOpenClawFetchUrls = [];
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (...args) => {
+        const target = args[0];
+        window.__agentOpenClawFetchUrls.push(
+          typeof target === "string" ? target : target?.url ?? String(target)
+        );
+        return originalFetch(...args);
+      };
 
       await waitFor(() => document.querySelector("#prompt"), "prompt field missing");
 
@@ -454,7 +468,40 @@ async function runUiFlow(page: CdpClient) {
           statuses.every((status) => status === "cancelled");
       }, "cancelled/search filters did not keep created job visible");
 
+      const dayFilter = await waitFor(
+        () => document.querySelector('.filterSegment[data-time-filter="24h"]'),
+        "24h time filter missing"
+      );
+      dayFilter.click();
+
+      await waitFor(() => {
+        const rows = Array.from(document.querySelectorAll(".jobRow"));
+        return rows.some((row) => row.querySelector("strong")?.textContent?.trim() === jobId);
+      }, "24h time filter did not keep created job visible");
+
+      const customFilter = await waitFor(
+        () => document.querySelector('.filterSegment[data-time-filter="custom"]'),
+        "custom time filter missing"
+      );
+      customFilter.click();
+      const sinceInput = await waitFor(() => document.querySelector("#jobSince"), "custom since input missing");
+      const untilInput = await waitFor(() => document.querySelector("#jobUntil"), "custom until input missing");
+      setNativeValue(sinceInput, formatDateTimeLocal(new Date(Date.now() - 24 * 60 * 60 * 1000)));
+      setNativeValue(untilInput, formatDateTimeLocal(new Date(Date.now() + 24 * 60 * 60 * 1000)));
+
+      await waitFor(() => {
+        const rows = Array.from(document.querySelectorAll(".jobRow"));
+        return rows.some((row) => row.querySelector("strong")?.textContent?.trim() === jobId);
+      }, "custom since/until filter did not keep created job visible");
+
+      await waitFor(() => {
+        return window.__agentOpenClawFetchUrls.some((url) => url.includes("/timeline?") && url.includes("cursor="));
+      }, "timeline cursor request was not observed");
+
       await waitFor(() => document.querySelectorAll(".timelineItem").length > 0, "timeline did not render");
+      const timelineCursorRequests = window.__agentOpenClawFetchUrls
+        .filter((url) => url.includes("/timeline?") && url.includes("cursor="))
+        .length;
 
       return {
         jobId,
@@ -463,6 +510,9 @@ async function runUiFlow(page: CdpClient) {
           .some((row) => row.querySelector("strong")?.textContent?.trim() === jobId),
         filteredStatuses: Array.from(document.querySelectorAll(".jobRow .jobStatus"))
           .map((node) => node.textContent?.trim() ?? ""),
+        timeFilterVisible: Boolean(document.querySelector('.filterSegment.active[data-time-filter="custom"]')),
+        customSinceVisible: Boolean(document.querySelector("#jobSince")),
+        timelineCursorRequests,
         timelineItems: document.querySelectorAll(".timelineItem").length,
         title: document.querySelector(".jobDetail h2")?.textContent?.trim() ?? ""
       };
@@ -484,6 +534,9 @@ async function runUiFlow(page: CdpClient) {
     statusVisible: boolean;
     filteredJobVisible: boolean;
     filteredStatuses: string[];
+    timeFilterVisible: boolean;
+    customSinceVisible: boolean;
+    timelineCursorRequests: number;
     timelineItems: number;
     title: string;
   };
@@ -613,6 +666,9 @@ async function main() {
             statusVisible: flow.statusVisible,
             filteredJobVisible: flow.filteredJobVisible,
             filteredStatuses: flow.filteredStatuses,
+            timeFilterVisible: flow.timeFilterVisible,
+            customSinceVisible: flow.customSinceVisible,
+            timelineCursorRequests: flow.timelineCursorRequests,
             timelineItems: flow.timelineItems,
             screenshotPath,
             checked: [
@@ -622,6 +678,8 @@ async function main() {
               "job_list_selection",
               "cancel_job_from_ui",
               "job_filter_search_visible",
+              "job_filter_time_window_visible",
+              "timeline_cursor_used",
               "timeline_rendered"
             ]
           },
