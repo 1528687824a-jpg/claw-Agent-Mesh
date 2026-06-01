@@ -9,10 +9,13 @@ Feishu, real OpenClaw, or planner credentials.
 
 ```text
 Docker with Docker Compose
-Node.js 22 or newer
-npm
+Node.js ^20.19.0 or >=22.12.0
+npm >=10
 PowerShell on Windows for local smoke scripts
 ```
+
+CI currently runs Node 22. Local development has also been verified on
+Node 24.15.0 with npm 11.12.1.
 
 OpenClaw real mode additionally requires a working OpenClaw CLI runtime. The
 Docker quickstart does not require OpenClaw.

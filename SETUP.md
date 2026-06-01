@@ -37,6 +37,18 @@ Temporal Server and Temporal UI are no longer part of the local dev stack.
 DBOS stores durable workflow state in Postgres under the `dbos` schema.
 Business state still lives in the `agent` schema.
 
+## Node Runtime
+
+Package engines are pinned to:
+
+```text
+node ^20.19.0 || >=22.12.0
+npm >=10
+```
+
+This follows the installed Vite 7 engine floor while allowing the current local
+Node 24 toolchain. CI currently uses Node 22.
+
 ## Local Services
 
 For the open-source quickstart path, start the full HTTP-only stack:

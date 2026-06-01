@@ -11,6 +11,68 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Node Engines Docs Checkpoint
+
+Aligned Node/npm engine constraints with the actual dependency floor and current
+verification environments.
+
+Decision:
+
+```text
+Do not use Claude's earlier suggested ">=20 <23" range. It conflicts with the
+current local Node 24 toolchain and is stricter than the installed Vite 7 engine
+floor. Use the installed Vite 7 requirement instead:
+  node ^20.19.0 || >=22.12.0
+  npm >=10
+```
+
+Code/docs changes:
+
+```text
+Updated package.json and package-lock.json:
+  engines.node = ^20.19.0 || >=22.12.0
+  engines.npm = >=10
+
+Updated apps/desktop-app/package.json and package-lock.json:
+  same engines block.
+
+Updated README.md, INSTALL.md, SETUP.md:
+  - documented the Node/npm runtime requirement;
+  - recorded that CI uses Node 22;
+  - recorded that local development has also been verified on Node 24.15.0 with
+    npm 11.12.1.
+```
+
+Validation:
+
+```text
+Local dependency check:
+  vite 7.3.3 engines.node = ^20.19.0 || >=22.12.0
+  tsx 4.22.3 engines.node = >=18.0.0
+  @tauri-apps/cli 2.11.2 engines.node = >=10
+
+Local runtime:
+  node v24.15.0
+  npm 11.12.1
+
+npm install --package-lock-only --ignore-scripts -> passed
+npm install --package-lock-only --ignore-scripts --prefix apps/desktop-app -> passed
+npm run check -> passed
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: timeline cursor composite-key hardening.
+5. Then m2 recovery nightly CI.
+6. Later: design waiting_for_human resume/accept/retry API.
+```
+
 ## 2026-05-31 Smoke Lock Orphan Cleanup Checkpoint
 
 Dev-stack smoke locks now recover from stale/orphan lock files.

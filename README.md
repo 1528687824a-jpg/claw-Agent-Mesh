@@ -24,6 +24,7 @@ Invoke-RestMethod -Uri "http://localhost:3000/jobs/$($job.jobId)/timeline"
 
 The default Docker Compose path is HTTP-only and mock-mode. Feishu and real
 OpenClaw are optional adapters/modes configured after the core stack is running.
+Local Node-based scripts require Node `^20.19.0 || >=22.12.0` and npm `>=10`.
 
 The desktop shell under `apps/desktop-app` is a thin React/Tauri client for the
 same HTTP API. Its current MVP can create jobs, filter/search recent jobs,

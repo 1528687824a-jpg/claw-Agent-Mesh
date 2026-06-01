@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "license": "Apache-2.0",
   "private": true,
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0",
+    "npm": ">=10"
+  },
   "scripts": {
     "build": "tsc",
     "db:migrate": "tsx packages/db/src/migrate.ts",
