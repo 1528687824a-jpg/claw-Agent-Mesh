@@ -140,6 +140,68 @@ Next ordered tasks:
    alpha path.
 ```
 
+## 2026-06-01 Clean Onboarding QUICKSTART Checkpoint
+
+The new-user onboarding path was walked from a clean archive copy and captured
+as `QUICKSTART.md`.
+
+Clean-copy method:
+
+```text
+Created .runtime/onboarding-clean from git archive HEAD.
+No .env, no .runtime state, and no node_modules were present in the clean copy.
+Ran docker compose with project name agent-openclaw-onboarding.
+```
+
+Changes:
+
+```text
+Added QUICKSTART.md:
+  - prerequisites;
+  - docker compose up --build;
+  - PowerShell and bash/curl POST /jobs examples;
+  - polling loop;
+  - messages and timeline inspection;
+  - stop/reset commands;
+  - routing-mode summary;
+  - optional desktop console path;
+  - troubleshooting;
+  - verified clean-copy result.
+
+Updated README.md:
+  - Read next now includes QUICKSTART.md.
+```
+
+Validation:
+
+```text
+Clean archive onboarding run -> passed
+  jobId=JOB-20260601-820940DC
+  createStatus=queued
+  terminalStatus=succeeded
+  ingressOrigin=http
+  messageCount=4
+  timelineItems=86
+  checked=git_archive_clean_copy,docker_compose_up_build,health,post_jobs,poll_terminal,get_messages,get_timeline
+
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. User-side alpha gate A: configure M3 real provider env and run
+   npm run smoke:m3-real-provider.
+2. User-side alpha gate B: configure git remote, push a branch, and watch
+   GitHub Actions to green.
+3. Current Codex-side product task: add examples/demo-jobs/ templates for each
+   routing mode.
+4. Move desktop UI timeline consumption to cursor and add since/until filters.
+5. Later/v1.1: waiting_for_human resume API. m2 nightly CI remains off the
+   alpha path.
+```
+
 ## 2026-05-31 Timeline Cursor Hardening Checkpoint
 
 Timeline pagination now has an opaque per-item cursor so clients can page

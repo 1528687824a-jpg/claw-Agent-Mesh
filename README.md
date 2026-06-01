@@ -171,6 +171,7 @@ SETUP.md               Detailed local setup and smoke-test guide.
 Read next:
 
 ```text
+QUICKSTART.md
 INSTALL.md
 SETUP.md
 docs/PROJECT_STRUCTURE.md
