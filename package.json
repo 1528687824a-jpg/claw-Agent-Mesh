@@ -21,6 +21,7 @@
     "smoke:cancel-job": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-cancel-job.ps1",
     "smoke:timeline-since": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-timeline-since.ps1",
     "smoke:list-jobs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-list-jobs.ps1",
+    "smoke:repair-cancelled-archives": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-repair-cancelled-archives.ps1",
     "smoke:openclaw-real": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-openclaw-real.ps1",
     "smoke:desktop-ui": "tsx scripts/smoke-desktop-ui.ts",
     "smoke:desktop-ui-prod": "tsx scripts/smoke-desktop-ui.ts --prod",
@@ -28,6 +29,7 @@
     "m3:generate": "tsx scripts/generate-cluster-config.ts",
     "prepare:public-ingress": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-public-ingress-bundle.ps1",
     "maintenance:cleanup-sessions": "tsx scripts/cleanup-expired-sessions.ts",
+    "maintenance:repair-cancelled-archives": "tsx scripts/repair-cancelled-archives.ts",
     "check:no-secrets": "tsx scripts/check-no-secrets.ts",
     "check": "tsc --noEmit"
   },

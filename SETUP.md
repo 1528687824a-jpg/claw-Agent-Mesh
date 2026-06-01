@@ -111,6 +111,7 @@ npm run smoke:m3-real-provider
 npm run smoke:cancel-job
 npm run smoke:timeline-since
 npm run smoke:list-jobs
+npm run smoke:repair-cancelled-archives
 npm run smoke:desktop-ui
 npm run smoke:desktop-ui-prod
 npm run smoke:tauri-shell
@@ -868,4 +869,19 @@ Apply cleanup:
 
 ```powershell
 npm run maintenance:cleanup-sessions -- --apply
+```
+
+Repair historical cancelled jobs that predate the cancel archive path:
+
+```powershell
+npm run maintenance:repair-cancelled-archives
+npm run maintenance:repair-cancelled-archives -- --apply
+```
+
+The repair is dry-run by default. It finds `status=cancelled` jobs where
+`archived_at is null` and, with `--apply`, archives them with
+`retentionPolicy.archiveReason=job_cancelled`. For a targeted repair:
+
+```powershell
+npm run maintenance:repair-cancelled-archives -- --job-id JOB-...
 ```

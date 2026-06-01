@@ -11,6 +11,70 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Historical Cancel Archive Repair Checkpoint
+
+Added a one-off maintenance path for historical jobs that were cancelled before
+the cancel archive behavior existed.
+
+Code changes:
+
+```text
+Added scripts/repair-cancelled-archives.ts:
+  - default mode is dry-run;
+  - finds jobs where status=cancelled and archived_at is null;
+  - supports --limit 1..500;
+  - supports --job-id JOB-... for targeted repair/smoke;
+  - with --apply, calls archiveJobSession({ reason: "job_cancelled" });
+  - emits compact JSON for script/smoke consumption.
+
+Added npm script:
+  npm run maintenance:repair-cancelled-archives
+
+Added scripts/smoke-repair-cancelled-archives.ps1:
+  - starts the dev stack in HTTP/mock mode;
+  - creates a budget-limited job;
+  - cancels it normally;
+  - mutates it into a legacy fixture by clearing archived_at/retention_until and
+    removing job.archived events;
+  - verifies dry-run finds the candidate but does not write;
+  - verifies --apply repairs archive fields and appends exactly one job.archived.
+
+Added npm script:
+  npm run smoke:repair-cancelled-archives
+
+Updated SETUP.md with repair commands and dry-run/apply semantics.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm run smoke:repair-cancelled-archives -> passed
+  job=JOB-20260601-1C3B998F
+  dryRunCandidateCount=1
+  applyRepairedCount=1
+  cleanupStatus=retained
+  archivedAt=2026-06-01T00:14:12.419Z
+  retentionUntil=2026-07-01T00:14:12.419Z
+  timelineArchiveEvents=1
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: add prompt-search boundary checks for case-insensitive and Chinese input.
+5. Then smoke lock orphan cleanup.
+6. Then Node engines/docs alignment.
+7. Then timeline cursor composite-key hardening.
+8. Then m2 recovery nightly CI.
+9. Later: design waiting_for_human resume/accept/retry API.
+```
+
 ## 2026-05-31 Job Cancellation Semantics Docs Checkpoint
 
 Documented v1 cancellation semantics so open-source users can understand why a
