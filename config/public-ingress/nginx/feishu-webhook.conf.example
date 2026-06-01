@@ -1,6 +1,6 @@
-# Example Nginx site for Agent OpenClaw Feishu public ingress.
-# Copy to the VPS (for example /etc/nginx/sites-available/tomorrow123.art),
-# replace placeholders locally, and do not commit real secrets.
+# Example Nginx site for optional Agent OpenClaw Feishu public ingress.
+# Copy to your public host, replace placeholders locally, and do not commit
+# real secrets or host-specific values.
 
 server {
     listen 80;
@@ -54,4 +54,3 @@ server {
         return 404;
     }
 }
-

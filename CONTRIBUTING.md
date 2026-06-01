@@ -13,8 +13,8 @@ download -> start local stack -> generate/configure an agent cluster
          -> switch routing modes -> inspect and operate jobs
 ```
 
-Feishu and `tomorrow123.art` are reference/private deployment paths. They should
-not become required for the core product path.
+Feishu public ingress is an optional self-hosting adapter path. It should not
+become required for the core product path.
 
 ## Boundaries
 

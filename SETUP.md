@@ -145,9 +145,9 @@ Ubuntu:
 ```
 
 `npm run smoke:docker-compose` uses an isolated Compose project and can be run
-as a separate quickstart proof. `npm run smoke:feishu-public` is a private
-reference-deployment check for the author's public webhook path, not a product
-gate.
+as a separate quickstart proof. `npm run smoke:feishu-public` is an optional
+self-hosting reference check for a user-owned Feishu public webhook path, not a
+product gate.
 
 Shared dev-stack smoke locks live under `.runtime/locks`. The PowerShell wrapper
 and desktop UI smoke write lock owner metadata and remove stale lock files when
@@ -826,16 +826,16 @@ classicFinalGateEnabled=false
 discussionRounds=2
 ```
 
-Public HTTPS webhook setup remains the next integration step. First production
-pass should keep Feishu event encryption disabled and rely on the verification
-token. If Encrypt Key is enabled in Feishu later, add decrypt/signature handling
-before turning it on.
+Public HTTPS webhook setup is an optional self-hosting adapter path, not the
+main quickstart. First production pass should keep Feishu event encryption
+disabled and rely on the verification token. If Encrypt Key is enabled in
+Feishu later, add decrypt/signature handling before turning it on.
 
-Recommended public ingress shape when `tomorrow123.art` is ready:
+Recommended public ingress shape for a user-owned domain:
 
 ```text
 Feishu
-  -> https://tomorrow123.art/webhooks/feishu/events
+  -> https://<your-domain>/webhooks/feishu/events
   -> VPS Nginx HTTPS
   -> frp
   -> local Windows API localhost:3000/webhooks/feishu/events
@@ -847,8 +847,8 @@ Expose only the webhook path through Nginx. Do not publish `/jobs`,
 Detailed deployment guide and templates:
 
 ```text
-docs/feishu-public-ingress.md
-config/public-ingress/nginx/tomorrow123.art.conf.example
+docs/reference-feishu-public-ingress.md
+config/public-ingress/nginx/feishu-webhook.conf.example
 config/public-ingress/frp/frps.toml.example
 config/public-ingress/frp/frpc.toml.example
 config/public-ingress/systemd/frps-agent-openclaw.service.example

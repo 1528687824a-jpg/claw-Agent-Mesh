@@ -48,7 +48,7 @@ For details, read:
 docs/PROJECT_STRUCTURE.md
 docs/BOUNDARIES.md
 docs/job-cancellation-semantics.md
-docs/feishu-public-ingress.md
+docs/reference-feishu-public-ingress.md
 SETUP.md
 INSTALL.md
 SECURITY.md
@@ -88,12 +88,9 @@ Optional real OpenClaw check, requiring a configured WSL OpenClaw runtime:
 npm run smoke:openclaw-real
 ```
 
-Private/reference Feishu public ingress helpers:
-
-```powershell
-npm run prepare:public-ingress
-npm run smoke:feishu-public
-```
+Optional Feishu public HTTPS ingress is a self-hosting reference path, not a
+quickstart or product gate. See `docs/reference-feishu-public-ingress.md`; the
+helper scripts require explicit `FEISHU_PUBLIC_*` environment variables.
 
 ## Boundary Rule
 

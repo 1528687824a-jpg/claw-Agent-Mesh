@@ -11,6 +11,81 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-01 Public Ingress Direction Cleanup Checkpoint
+
+Direction decision:
+
+```text
+Claude's direction-drift audit was mostly right: the project should stop
+spending alpha energy on deeper internal hardening and should pivot to the
+external door / first-run experience.
+
+Accepted:
+  - m2 recovery nightly CI is cut from the alpha path for now.
+  - waiting_for_human resume/accept/retry API is deferred to v1.1.
+  - tomorrow123.art must not remain a default product fact in the repo.
+
+Codex judgment:
+  Do not delete every public-ingress helper. Keep generic Feishu public HTTPS
+  ingress as an optional self-hosting reference because real users may deploy
+  Feishu with their own domain/tunnel. Remove the author-specific domain/IP and
+  default URL instead.
+```
+
+Changes:
+
+```text
+Deleted/replaced docs/feishu-public-ingress.md with:
+  docs/reference-feishu-public-ingress.md
+
+Renamed:
+  config/public-ingress/nginx/tomorrow123.art.conf.example
+  -> config/public-ingress/nginx/feishu-webhook.conf.example
+
+Updated scripts:
+  scripts/prepare-public-ingress-bundle.ps1 now requires FEISHU_PUBLIC_DOMAIN.
+  scripts/smoke-public-feishu-webhook.ps1 now requires FEISHU_PUBLIC_WEBHOOK_URL.
+  Neither script defaults to the author's domain.
+
+Updated docs:
+  README.md, SETUP.md, CONTRIBUTING.md now describe Feishu public ingress as an
+  optional self-hosting reference path, not a quickstart or product gate.
+
+Updated desktop app identifier:
+  apps/desktop-app/src-tauri/tauri.conf.json now uses io.agentopenclaw.desktop.
+  scripts/smoke-tauri-shell.ps1 was updated to match.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm run check:no-secrets -> passed
+npm run smoke:tauri-shell -> passed
+  rustToolchain=available
+  buildRunnable=true
+$env:FEISHU_PUBLIC_DOMAIN='example.com'; npm run prepare:public-ingress -> passed
+  generated .runtime/public-ingress/vps/nginx/example.com.conf
+rg tomorrow123 / 49.232.90.172 over README/SETUP/docs/config/scripts/apps -> no results
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. User-side alpha gate A: configure M3 real provider env and run
+   npm run smoke:m3-real-provider.
+2. User-side alpha gate B: configure git remote, push a branch, and watch
+   GitHub Actions to green.
+3. Current Codex-side product task: rewrite README for first-time users
+   (what this is, docker compose + curl, four routing modes, UI screenshot).
+4. Walk new-user onboarding from a clean environment and produce QUICKSTART.md.
+5. Add examples/demo-jobs/ templates for each routing mode.
+6. Move desktop UI timeline consumption to cursor and add since/until filters.
+7. Later/v1.1: waiting_for_human resume API. Do not revive m2 nightly CI as an
+   alpha blocker.
+```
+
 ## 2026-05-31 Timeline Cursor Hardening Checkpoint
 
 Timeline pagination now has an opaque per-item cursor so clients can page

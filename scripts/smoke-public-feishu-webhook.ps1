@@ -1,11 +1,10 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$publicWebhookUrl = if ($env:FEISHU_PUBLIC_WEBHOOK_URL) {
-  $env:FEISHU_PUBLIC_WEBHOOK_URL
-} else {
-  "https://tomorrow123.art/webhooks/feishu/events"
+if (-not $env:FEISHU_PUBLIC_WEBHOOK_URL) {
+  throw "FEISHU_PUBLIC_WEBHOOK_URL is required, for example: `$env:FEISHU_PUBLIC_WEBHOOK_URL='https://example.com/webhooks/feishu/events'"
 }
+$publicWebhookUrl = $env:FEISHU_PUBLIC_WEBHOOK_URL
 $localApiBaseUrl = if ($env:ORCHESTRATOR_LOCAL_BASE_URL) {
   $env:ORCHESTRATOR_LOCAL_BASE_URL.TrimEnd("/")
 } else {

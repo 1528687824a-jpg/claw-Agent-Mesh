@@ -55,7 +55,7 @@ if ($tauriConfig.productName -ne "Agent OpenClaw") {
   throw "Unexpected Tauri productName"
 }
 
-if ($tauriConfig.identifier -ne "art.tomorrow123.agent-openclaw") {
+if ($tauriConfig.identifier -ne "io.agentopenclaw.desktop") {
   throw "Unexpected Tauri identifier"
 }
 

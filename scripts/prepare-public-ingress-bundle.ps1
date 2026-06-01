@@ -4,7 +4,11 @@ $root = Split-Path -Parent $PSScriptRoot
 $runtimeDir = Join-Path $root ".runtime/public-ingress"
 $templatesDir = Join-Path $root "config/public-ingress"
 
-$domain = if ($env:FEISHU_PUBLIC_DOMAIN) { $env:FEISHU_PUBLIC_DOMAIN } else { "tomorrow123.art" }
+if (-not $env:FEISHU_PUBLIC_DOMAIN) {
+  throw "FEISHU_PUBLIC_DOMAIN is required, for example: `$env:FEISHU_PUBLIC_DOMAIN='example.com'"
+}
+
+$domain = $env:FEISHU_PUBLIC_DOMAIN
 $vpsHost = if ($env:FEISHU_PUBLIC_VPS_HOST) { $env:FEISHU_PUBLIC_VPS_HOST } else { $domain }
 $frpBindPort = if ($env:FRP_BIND_PORT) { [int]$env:FRP_BIND_PORT } else { 7000 }
 $frpRemoteApiPort = if ($env:FRP_REMOTE_API_PORT) { [int]$env:FRP_REMOTE_API_PORT } else { 13000 }
@@ -75,7 +79,7 @@ Expand-Template `
   -TemplatePath (Join-Path $templatesDir "frp/frpc.toml.example") `
   -OutputPath (Join-Path $runtimeDir "local/frpc/agent-openclaw-frpc.toml")
 Expand-Template `
-  -TemplatePath (Join-Path $templatesDir "nginx/tomorrow123.art.conf.example") `
+  -TemplatePath (Join-Path $templatesDir "nginx/feishu-webhook.conf.example") `
   -OutputPath (Join-Path $runtimeDir "vps/nginx/$domain.conf")
 Expand-Template `
   -TemplatePath (Join-Path $templatesDir "systemd/frps-agent-openclaw.service.example") `
