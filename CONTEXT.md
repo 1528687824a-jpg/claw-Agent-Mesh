@@ -11,6 +11,84 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-01 GitHub Remote And CI Checkpoint
+
+GitHub remote setup:
+
+```text
+User provided remote:
+  https://github.com/1528687824a-jpg/claw-Agent-Mesh.git
+
+Local branch:
+  main
+
+Remote:
+  origin -> https://github.com/1528687824a-jpg/claw-Agent-Mesh.git
+```
+
+Important merge detail:
+
+```text
+The GitHub repository was not empty. It already had initial commit e6ee159
+with .gitattributes and a short README.md.
+
+Codex did not force-push over the remote. Instead it merged the GitHub
+bootstrap commit into local history with --allow-unrelated-histories, resolved
+README.md by keeping the full local open-source README, accepted .gitattributes,
+and pushed main normally.
+```
+
+Pushed commits:
+
+```text
+5beef51 Merge GitHub repository bootstrap
+21a3cbe Opt GitHub Actions into Node 24 runtime
+```
+
+CI status observed:
+
+```text
+First hosted GitHub Actions run observed green:
+  https://github.com/1528687824a-jpg/claw-Agent-Mesh/actions/runs/26763549144
+
+Jobs observed green:
+  Docker quickstart
+  Node and smoke checks
+
+GitHub Actions warned that checkout/setup-node were still running on Node 20
+internally and that Node 24 becomes the default on 2026-06-16. Commit 21a3cbe
+added FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true to .github/workflows/ci.yml and
+was pushed.
+
+Do not overclaim the latest CI state after 21a3cbe unless rechecked. The
+Actions page / network was stale or intermittently unreachable during the
+follow-up verification attempt.
+```
+
+Direction note:
+
+```text
+This completed the remote/hosted-CI alpha gate enough to prove the repository
+is publishable and CI-capable. It does not change the product direction: the
+main goal remains an open-source, downloadable multi-agent orchestration
+platform for OpenClaw. tomorrow123.art / Feishu public ingress remains optional
+self-hosting reference work, not the main milestone.
+```
+
+Next ordered tasks:
+
+```text
+1. Recheck the latest GitHub Actions run for the current main HEAD after this
+   context-update commit is pushed.
+2. Remaining alpha gate A: operator explicitly authorizes real provider spend,
+   configures M3 env, then run npm run smoke:m3-real-provider.
+3. Later with explicit authorization: run OpenClaw real-mode validation across
+   all four routing modes.
+4. Optional polish after gates: improve placeholder app icon, add signing /
+   release tag notes, and prepare a first public alpha release.
+5. v1.1/backlog: waiting_for_human resume API.
+```
+
 ## 2026-06-01 Public Ingress Direction Cleanup Checkpoint
 
 Direction decision:
