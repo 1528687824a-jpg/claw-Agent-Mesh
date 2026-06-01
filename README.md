@@ -11,6 +11,8 @@ is too opaque. The current default quickstart is HTTP-only and mock-mode, so
 you can run the orchestration engine without Feishu credentials or real model
 provider keys.
 
+![HTTP-only quickstart demo](docs/assets/quickstart-demo.gif)
+
 ![Agent OpenClaw desktop UI](docs/assets/desktop-ui-mvp.png)
 
 ## Quickstart

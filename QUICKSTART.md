@@ -3,6 +3,8 @@
 This path starts Agent OpenClaw in HTTP-only mock mode. You do not need Feishu
 credentials, OpenClaw provider keys, Rust, or Node on the host.
 
+![HTTP-only quickstart demo](docs/assets/quickstart-demo.gif)
+
 You need:
 
 ```text
@@ -211,4 +213,16 @@ ingressOrigin=http
 messageCount=4
 timelineItems=86
 checked=git_archive_clean_copy,docker_compose_up_build,health,post_jobs,poll_terminal,get_messages,get_timeline
+```
+
+The demo GIF above was regenerated from a later repeatable Docker Compose smoke
+on 2026-06-01:
+
+```text
+jobId=JOB-20260601-EF874902
+terminalStatus=succeeded
+ingressOrigin=http
+messageCount=4
+persistenceCheck=passed
+checked=compose_up_build,http_create_job,poll_succeeded,get_messages,compose_restart_persistence
 ```

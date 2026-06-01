@@ -623,6 +623,70 @@ Next ordered tasks:
    host probes.
 ```
 
+## 2026-06-01 QUICKSTART Demo GIF Checkpoint
+
+Completed the next safe Codex-side task after the Windows installer proof:
+create a first-run demo asset for the open-source onboarding path. This does
+not use real providers and does not spend model quota.
+
+Validation source:
+
+```text
+npm run smoke:docker-compose -> passed
+  jobId=JOB-20260601-EF874902
+  terminalStatus=succeeded
+  ingressOrigin=http
+  messageCount=4
+  persistenceCheck=passed
+  checked=compose_up_build,http_create_job,poll_succeeded,get_messages,compose_restart_persistence
+```
+
+Changes:
+
+```text
+Added docs/assets/quickstart-demo.gif:
+  - generated from lightweight PNG frames using ffmpeg;
+  - shows the HTTP-only quickstart flow:
+      docker compose up --build
+      POST /jobs
+      jobId returned
+      poll to succeeded
+      read messages/timeline
+      persistence check passed
+  - uses real smoke result JOB-20260601-EF874902 as the displayed proof.
+
+Updated README.md:
+  - displays the quickstart GIF near the first screen before the desktop UI
+    screenshot.
+
+Updated QUICKSTART.md:
+  - displays the same GIF near the top;
+  - records the smoke result that generated the demo.
+```
+
+Validation:
+
+```text
+Manual visual check of docs/assets/quickstart-demo.gif -> acceptable first frame
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. Commit the QUICKSTART GIF/docs update.
+2. User-side alpha gate A: explicitly authorize real provider spend, configure
+   M3 env, then run npm run smoke:m3-real-provider.
+3. User-side alpha gate B: configure git remote, push, and watch GitHub Actions
+   to green.
+4. Codex-safe follow-up if continuing without A/B: add macOS/Linux native
+   packaging notes/probes or create a short release checklist.
+5. Later with explicit authorization: OpenClaw real-mode validation across all
+   four routing modes.
+6. v1.1/backlog: waiting_for_human resume API.
+```
+
 ## 2026-05-31 Timeline Cursor Hardening Checkpoint
 
 Timeline pagination now has an opaque per-item cursor so clients can page
