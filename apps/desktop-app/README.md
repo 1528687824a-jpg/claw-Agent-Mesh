@@ -10,6 +10,7 @@ Current MVP surface:
 
 ```text
 job list
+status filters and prompt search over GET /jobs
 new HTTP job creation
 job detail summary
 timeline view from GET /jobs/:id/timeline

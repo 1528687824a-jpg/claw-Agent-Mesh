@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   cancelJob,
@@ -10,11 +10,13 @@ import {
   type JobRecord,
   type JobStatus,
   type JobTimeline,
+  type ListJobsResponse,
   type RoutingMode
 } from "./api";
 import "./styles.css";
 
 type ApiState = "checking" | "online" | "offline";
+type JobStatusFilter = "all" | "running" | "waiting_for_human" | "cancelled";
 
 const routingModes: RoutingMode[] = [
   "supervisor_pipeline",
@@ -31,6 +33,13 @@ const cancellableStatuses: JobStatus[] = [
   "testing",
   "fixing",
   "waiting_for_human"
+];
+
+const jobStatusFilters: Array<{ id: JobStatusFilter; label: string; status?: JobStatus }> = [
+  { id: "all", label: "All" },
+  { id: "running", label: "Running", status: "running" },
+  { id: "waiting_for_human", label: "Waiting", status: "waiting_for_human" },
+  { id: "cancelled", label: "Cancelled", status: "cancelled" }
 ];
 
 function formatTime(value: string | null | undefined) {
@@ -64,11 +73,15 @@ function App() {
   const [routingMode, setRoutingMode] = useState<RoutingMode>("supervisor_pipeline");
   const [maxModelCalls, setMaxModelCalls] = useState(20);
   const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [jobListPage, setJobListPage] = useState<ListJobsResponse["page"] | null>(null);
+  const [jobStatusFilter, setJobStatusFilter] = useState<JobStatusFilter>("all");
+  const [jobPromptFilter, setJobPromptFilter] = useState("");
   const [selectedJobId, setSelectedJobId] = useState("");
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
   const [timeline, setTimeline] = useState<JobTimeline | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const jobsRequestSeq = useRef(0);
 
   const statusText = useMemo(() => {
     if (apiState === "online") return "API online";
@@ -81,12 +94,59 @@ function App() {
     [jobs, selectedJob, selectedJobId]
   );
 
+  const activeStatusFilter = jobStatusFilters.find((filter) => filter.id === jobStatusFilter);
+  const trimmedJobPromptFilter = jobPromptFilter.trim();
+
   async function refreshJobs(preferredJobId = selectedJobId) {
-    const response = await listJobs(50);
+    const requestSeq = ++jobsRequestSeq.current;
+    const response = await listJobs({
+      limit: 50,
+      status: activeStatusFilter?.status,
+      prompt: trimmedJobPromptFilter || undefined,
+      sort: "createdAt",
+      order: "desc"
+    });
+    if (requestSeq !== jobsRequestSeq.current) {
+      return selectedJobId;
+    }
+
     setJobs(response.jobs);
-    const nextSelectedId = preferredJobId || response.jobs[0]?.id || "";
+    setJobListPage(response.page);
+    const nextSelectedId = response.jobs.some((job) => job.id === preferredJobId)
+      ? preferredJobId
+      : response.jobs[0]?.id || "";
     setSelectedJobId(nextSelectedId);
     return nextSelectedId;
+  }
+
+  async function loadMoreJobs() {
+    if (!jobListPage?.nextCursor) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const requestSeq = ++jobsRequestSeq.current;
+      const response = await listJobs({
+        limit: 50,
+        status: activeStatusFilter?.status,
+        prompt: trimmedJobPromptFilter || undefined,
+        sort: "createdAt",
+        order: "desc",
+        cursor: jobListPage.nextCursor
+      });
+      if (requestSeq !== jobsRequestSeq.current) {
+        return;
+      }
+
+      setJobs((currentJobs) => {
+        const existingIds = new Set(currentJobs.map((job) => job.id));
+        return [...currentJobs, ...response.jobs.filter((job) => !existingIds.has(job.id))];
+      });
+      setJobListPage(response.page);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function refreshJob(targetJobId = selectedJobId) {
@@ -161,7 +221,12 @@ function App() {
       });
     }, 4000);
     return () => window.clearInterval(interval);
-  }, [apiState, selectedJobId]);
+  }, [apiState, selectedJobId, jobStatusFilter, trimmedJobPromptFilter]);
+
+  useEffect(() => {
+    if (apiState !== "online") return;
+    refreshAll("").catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+  }, [jobStatusFilter, trimmedJobPromptFilter, apiState]);
 
   return (
     <main className="shell">
@@ -227,7 +292,30 @@ function App() {
         <aside className="jobList">
           <div className="sectionHeader">
             <h2>Jobs</h2>
-            <span>{jobs.length}</span>
+            <span>{jobListPage?.hasMore ? `${jobs.length}+` : jobs.length}</span>
+          </div>
+          <div className="jobFilters">
+            <div className="filterSegments" aria-label="Job status filter">
+              {jobStatusFilters.map((filter) => (
+                <button
+                  key={filter.id}
+                  className={filter.id === jobStatusFilter ? "filterSegment active" : "filterSegment"}
+                  data-filter={filter.id}
+                  type="button"
+                  onClick={() => setJobStatusFilter(filter.id)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            <input
+              id="jobSearch"
+              type="search"
+              aria-label="Search job prompts"
+              placeholder="Search prompts"
+              value={jobPromptFilter}
+              onChange={(event) => setJobPromptFilter(event.target.value)}
+            />
           </div>
           <ol>
             {jobs.map((job) => (
@@ -247,7 +335,15 @@ function App() {
                 </button>
               </li>
             ))}
+            {jobs.length === 0 ? <li className="emptyState">No jobs match.</li> : null}
           </ol>
+          {jobListPage?.hasMore ? (
+            <div className="loadMoreRow">
+              <button className="secondaryButton" type="button" onClick={loadMoreJobs} disabled={busy}>
+                Load More
+              </button>
+            </div>
+          ) : null}
         </aside>
 
         <section className="jobDetail">

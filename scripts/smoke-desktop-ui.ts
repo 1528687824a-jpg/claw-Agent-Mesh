@@ -394,11 +394,31 @@ async function runUiFlow(page: CdpClient) {
         return text.includes(jobId) && text.includes("cancelled");
       }, "job did not become cancelled", 90000);
 
+      const search = await waitFor(() => document.querySelector("#jobSearch"), "job search field missing");
+      setNativeValue(search, "Desktop UI smoke");
+      const cancelledFilter = await waitFor(
+        () => document.querySelector('.filterSegment[data-filter="cancelled"]'),
+        "cancelled filter missing"
+      );
+      cancelledFilter.click();
+
+      await waitFor(() => {
+        const rows = Array.from(document.querySelectorAll(".jobRow"));
+        const statuses = rows.map((row) => row.querySelector(".jobStatus")?.textContent?.trim() ?? "");
+        return rows.some((row) => row.querySelector("strong")?.textContent?.trim() === jobId) &&
+          statuses.length > 0 &&
+          statuses.every((status) => status === "cancelled");
+      }, "cancelled/search filters did not keep created job visible");
+
       await waitFor(() => document.querySelectorAll(".timelineItem").length > 0, "timeline did not render");
 
       return {
         jobId,
         statusVisible: document.body.textContent.includes("cancelled"),
+        filteredJobVisible: Array.from(document.querySelectorAll(".jobRow"))
+          .some((row) => row.querySelector("strong")?.textContent?.trim() === jobId),
+        filteredStatuses: Array.from(document.querySelectorAll(".jobRow .jobStatus"))
+          .map((node) => node.textContent?.trim() ?? ""),
         timelineItems: document.querySelectorAll(".timelineItem").length,
         title: document.querySelector(".jobDetail h2")?.textContent?.trim() ?? ""
       };
@@ -418,6 +438,8 @@ async function runUiFlow(page: CdpClient) {
   return result.result.value as {
     jobId: string;
     statusVisible: boolean;
+    filteredJobVisible: boolean;
+    filteredStatuses: string[];
     timelineItems: number;
     title: string;
   };
@@ -545,6 +567,8 @@ async function main() {
             url: uiUrl,
             jobId: flow.jobId,
             statusVisible: flow.statusVisible,
+            filteredJobVisible: flow.filteredJobVisible,
+            filteredStatuses: flow.filteredStatuses,
             timelineItems: flow.timelineItems,
             screenshotPath,
             checked: [
@@ -553,6 +577,7 @@ async function main() {
               "create_job_from_ui",
               "job_list_selection",
               "cancel_job_from_ui",
+              "job_filter_search_visible",
               "timeline_rendered"
             ]
           },

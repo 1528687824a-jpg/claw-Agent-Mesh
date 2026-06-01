@@ -11,6 +11,96 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Desktop Job List Filters Checkpoint
+
+Independent direction check:
+
+```text
+Claude's suggestion to expose GET /jobs filters in the desktop UI was accepted,
+not because it should drive the roadmap, but because it serves the actual product
+goal: a downloadable multi-agent orchestration platform with a usable desktop
+control console. This turns the previous backend list API work into visible user
+value. Claude's other suggestions remain filtered through that lens; private
+deployment work is still off the product critical path.
+```
+
+Code changes:
+
+```text
+Updated apps/desktop-app/src/main.tsx:
+  - added Jobs pane segmented filters:
+      All
+      Running
+      Waiting
+      Cancelled
+  - added prompt search input backed by GET /jobs?prompt=...
+  - added Load More support using page.nextCursor;
+  - refreshes the selected job after filter changes;
+  - uses a request sequence guard so older list responses cannot overwrite a
+    newer filter/search result.
+
+Updated apps/desktop-app/src/styles.css:
+  - added compact segmented filter styling;
+  - added search/filter layout and load-more row.
+
+Updated scripts/smoke-desktop-ui.ts:
+  - after creating and cancelling a job, searches for "Desktop UI smoke";
+  - switches to the Cancelled filter;
+  - verifies the created job remains visible;
+  - verifies every visible job row has status=cancelled.
+
+Updated docs:
+  - apps/desktop-app/README.md lists status filters and prompt search;
+  - SETUP.md notes which list controls are exposed in the desktop UI.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm run smoke:desktop-ui -> passed
+  job=JOB-20260601-AAB47B82
+  filteredJobVisible=true
+  filteredStatuses=all cancelled
+  timelineItems=54
+npm run smoke:desktop-ui-prod -> passed
+  job=JOB-20260601-8AB9E19A
+  filteredJobVisible=true
+  filteredStatuses=all cancelled
+  timelineItems=54
+  screenshot=.runtime/desktop-ui-smoke/desktop-ui-prod-smoke.png
+Visual screenshot inspection passed:
+  Cancelled filter is active, search is applied, visible rows are cancelled,
+  selected job detail and timeline render without overlap.
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Implementation note:
+
+```text
+The first prod screenshot revealed a real UI race: the Cancelled segment could be
+active while a stale prompt-search response left waiting_for_human rows visible.
+The request sequence guard fixed this; the smoke now asserts all visible rows are
+cancelled after applying the search + status filter.
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: document job cancellation artifact semantics.
+5. Then add a one-off maintenance repair for historical cancelled jobs missing archives.
+6. Then add prompt-search boundary checks for case-insensitive and Chinese input.
+7. Then smoke lock orphan cleanup.
+8. Then Node engines/docs alignment.
+9. Then timeline cursor composite-key hardening.
+10. Then m2 recovery nightly CI.
+11. Later: design waiting_for_human resume/accept/retry API.
+```
+
 ## 2026-05-31 Job List Pagination/Search Checkpoint
 
 GET /jobs now supports product-grade filtering, sorting, and cursor pagination

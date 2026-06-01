@@ -266,6 +266,10 @@ GET /jobs/:jobId/timeline?since=<ISO timestamp>&limit=<n>
 POST /jobs/:jobId/cancel
 ```
 
+The Jobs pane exposes the common list controls directly: All, Running, Waiting,
+Cancelled, plus prompt search. Less common list controls such as since/until and
+sort/order remain API-level controls for now.
+
 Job listing supports cursor pagination and lightweight filters:
 
 ```text
