@@ -390,6 +390,49 @@ Next ordered tasks:
 5. v1.1: waiting_for_human resume API. m2 nightly CI remains off the alpha path.
 ```
 
+## 2026-06-01 Automated Provider Call Boundary Checkpoint
+
+Claude's review suggested that the "do not auto-run paid providers" behavior is
+a project trust signal. This is now documented in SECURITY.md.
+
+Changes:
+
+```text
+Updated SECURITY.md:
+  - added Automated Provider Calls section;
+  - states automated checks and agent-driven maintenance must not call paid LLM
+    providers without explicit operator authorization;
+  - lists safe automatic checks:
+      npm run smoke:m3-real-planner
+      npm run smoke:m3-config
+      npm run smoke:http-only
+  - lists checks that require explicit operator choice:
+      npm run smoke:m3-real-provider
+      npm run smoke:openclaw-real
+  - states that provider keys in .env are not permission to spend quota.
+```
+
+Validation:
+
+```text
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Next ordered tasks:
+
+```text
+1. User-side alpha gate A: configure M3 real provider env using
+   docs/m3-real-provider-operator-guide.md, then run:
+   npm run smoke:m3-real-provider
+2. User-side alpha gate B: configure git remote, push a branch, and watch
+   GitHub Actions to green.
+3. Current Codex-side task if continuing before A/B: run one real Tauri build
+   proof and document installer artifacts/notes.
+4. Later: QUICKSTART recording/GIF and OpenClaw real-mode broader validation.
+5. v1.1: waiting_for_human resume API. m2 nightly CI remains off the alpha path.
+```
+
 ## 2026-05-31 Timeline Cursor Hardening Checkpoint
 
 Timeline pagination now has an opaque per-item cursor so clients can page

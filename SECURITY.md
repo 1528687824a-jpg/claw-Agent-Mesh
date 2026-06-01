@@ -29,6 +29,31 @@ npm run check:no-secrets
 The checker is a hygiene guard, not a complete secret scanner. If you suspect a
 secret was committed, rotate it immediately.
 
+## Automated Provider Calls
+
+Automated checks and agent-driven maintenance must not call paid LLM providers
+without explicit operator authorization. CI-safe checks use mock mode or local
+fake-provider smokes.
+
+Examples that are safe to run automatically:
+
+```text
+npm run smoke:m3-real-planner
+npm run smoke:m3-config
+npm run smoke:http-only
+```
+
+Examples that require an explicit operator decision because they may call a
+real provider or spend quota:
+
+```text
+npm run smoke:m3-real-provider
+npm run smoke:openclaw-real
+```
+
+Do not treat the presence of provider keys in `.env` as permission to spend
+quota. The operator must intentionally choose the real-provider run.
+
 ## Public Ingress
 
 Only expose the narrow webhook path required by an adapter. For Feishu public
