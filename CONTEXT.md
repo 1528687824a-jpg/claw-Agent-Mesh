@@ -86,6 +86,60 @@ Next ordered tasks:
    alpha blocker.
 ```
 
+## 2026-06-01 README First-Run Rewrite Checkpoint
+
+README was rewritten from an engineering-note shape into a first-time-user
+entry page.
+
+Changes:
+
+```text
+Updated README.md:
+  - first screen now explains what Agent OpenClaw is, who it is for, and why it
+    differs from brittle bot scripts or opaque hosted workflow tools;
+  - Docker Compose quickstart is now the primary path;
+  - added pasteable PowerShell job creation, polling, messages, and timeline
+    commands;
+  - added an equivalent one-line curl POST /jobs example;
+  - added expected POST /jobs response shape;
+  - added a routing-mode decision table for supervisor_pipeline, pipeline,
+    classic_master_slave, and master_slave_discussion;
+  - added current capability/status summary;
+  - demoted optional/advanced smokes out of the main check list.
+
+Added docs/assets/desktop-ui-mvp.png:
+  - copied from the verified production desktop UI smoke screenshot.
+```
+
+Validation:
+
+```text
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+npm run smoke:docker-compose -> passed
+  jobId=JOB-20260601-0A0786E2
+  terminalStatus=succeeded
+  ingressOrigin=http
+  messageCount=4
+  persistenceCheck=passed
+  checked=compose_up_build,http_create_job,poll_succeeded,get_messages,compose_restart_persistence
+```
+
+Next ordered tasks:
+
+```text
+1. User-side alpha gate A: configure M3 real provider env and run
+   npm run smoke:m3-real-provider.
+2. User-side alpha gate B: configure git remote, push a branch, and watch
+   GitHub Actions to green.
+3. Current Codex-side product task: walk the new-user onboarding path and
+   produce QUICKSTART.md.
+4. Add examples/demo-jobs/ templates for each routing mode.
+5. Move desktop UI timeline consumption to cursor and add since/until filters.
+6. Later/v1.1: waiting_for_human resume API. m2 nightly CI remains off the
+   alpha path.
+```
+
 ## 2026-05-31 Timeline Cursor Hardening Checkpoint
 
 Timeline pagination now has an opaque per-item cursor so clients can page
