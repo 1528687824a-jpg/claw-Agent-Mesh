@@ -11,6 +11,68 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-05-31 Prompt Search Boundary Checkpoint
+
+Extended the job-list smoke coverage to lock down prompt search behavior for
+case-insensitive English input and Chinese input.
+
+Code changes:
+
+```text
+Updated scripts/smoke-list-jobs.ps1:
+  - Create-SmokeJob now sends request bodies as explicit UTF-8 bytes with
+    application/json; charset=utf-8;
+  - added a MixedCasePrompt probe and searches using a lowercase query;
+  - added a Chinese prompt probe built from Unicode code points, not a raw
+    PowerShell source literal, to avoid Windows PowerShell file-encoding loss;
+  - verifies the Chinese query returns the Chinese probe.
+
+Updated SETUP.md:
+  - list-jobs smoke expectations now include case-insensitive prompt search and
+    Chinese prompt search.
+```
+
+Validation:
+
+```text
+npm run check -> passed
+npm run smoke:list-jobs -> passed
+  marker=list-3f132827
+  jobIds:
+    JOB-20260601-4AAF44B5
+    JOB-20260601-777540F2
+    JOB-20260601-A46B7780
+    JOB-20260601-ECA5E39B
+    JOB-20260601-090C3D56
+    JOB-20260601-ADC8D35E
+  caseInsensitiveProbe=JOB-20260601-090C3D56
+  chineseProbe=JOB-20260601-ADC8D35E
+npm run check:no-secrets -> passed
+git diff --check -> passed; only Windows CRLF warnings were printed
+```
+
+Implementation note:
+
+```text
+The first Chinese smoke attempt failed usefully: the prompt reached the database
+as question marks. The cause was Windows PowerShell request-body encoding, not
+Postgres ILIKE. The smoke now sends UTF-8 bytes explicitly, which also documents
+the correct client behavior for non-ASCII prompts.
+```
+
+Next ordered tasks:
+
+```text
+1. Configure local M3 real provider variables and run npm run smoke:m3-real-provider.
+2. Configure git remote, push a branch, and watch GitHub Actions to green.
+3. Try a genuinely different Rust path later, then run Tauri build proof.
+4. Current next local product task: smoke lock orphan cleanup.
+5. Then Node engines/docs alignment.
+6. Then timeline cursor composite-key hardening.
+7. Then m2 recovery nightly CI.
+8. Later: design waiting_for_human resume/accept/retry API.
+```
+
 ## 2026-05-31 Historical Cancel Archive Repair Checkpoint
 
 Added a one-off maintenance path for historical jobs that were cancelled before

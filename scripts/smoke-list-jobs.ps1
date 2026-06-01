@@ -47,12 +47,13 @@ function Create-SmokeJob {
     routingMode = "supervisor_pipeline"
     maxModelCalls = 1
   } | ConvertTo-Json
+  $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 
   Invoke-RestMethod `
     -Uri "http://localhost:3000/jobs" `
     -Method Post `
-    -ContentType "application/json" `
-    -Body $body
+    -ContentType "application/json; charset=utf-8" `
+    -Body $bodyBytes
 }
 
 function Wait-ForStatus {
@@ -168,16 +169,33 @@ try {
 }
 Assert-Equal -Actual $invalidCursorStatus -Expected 400 -Message "invalid cursor status"
 
+$caseMarker = "CaseProbe" + ([guid]::NewGuid().ToString("N").Substring(0, 8))
+$caseProbe = Create-SmokeJob -Marker $caseMarker -Name "MixedCasePrompt"
+$caseSearch = [System.Uri]::EscapeDataString($caseMarker.ToLowerInvariant())
+$caseResult = Invoke-RestMethod -Uri "http://localhost:3000/jobs?prompt=$caseSearch&limit=10"
+$caseJobs = @($caseResult.jobs | Where-Object { $_.id -eq $caseProbe.jobId })
+Assert-Equal -Actual $caseJobs.Count -Expected 1 -Message "prompt search should be case-insensitive"
+
+$chinesePrefix = -join ([char[]](0x4e2d, 0x6587, 0x6d4b, 0x8bd5, 0x4efb, 0x52a1))
+$chineseMarker = $chinesePrefix + ([guid]::NewGuid().ToString("N").Substring(0, 8))
+$chineseProbe = Create-SmokeJob -Marker $chineseMarker -Name "boundary"
+$chineseSearch = [System.Uri]::EscapeDataString($chinesePrefix)
+$chineseResult = Invoke-RestMethod -Uri "http://localhost:3000/jobs?prompt=$chineseSearch&limit=50"
+$chineseJobs = @($chineseResult.jobs | Where-Object { $_.id -eq $chineseProbe.jobId })
+Assert-Equal -Actual $chineseJobs.Count -Expected 1 -Message "prompt search should match Chinese input"
+
 [pscustomobject]@{
   ok = $true
   marker = $marker
-  jobIds = @($alpha.jobId, $beta.jobId, $gamma.jobId, $cancelProbe.jobId)
+  jobIds = @($alpha.jobId, $beta.jobId, $gamma.jobId, $cancelProbe.jobId, $caseProbe.jobId, $chineseProbe.jobId)
   allOrder = $allNames
   page1 = $page1Names
   page2 = $page2Names
   desc = $descNames
   cancelledFilter = $cancelledNames
   window = $windowNames
+  caseInsensitiveProbe = $caseProbe.jobId
+  chineseProbe = $chineseProbe.jobId
   checked = @(
     "prompt_search",
     "created_at_asc_order",
@@ -187,6 +205,8 @@ Assert-Equal -Actual $invalidCursorStatus -Expected 400 -Message "invalid cursor
     "status_filter",
     "ingress_origin_filter",
     "since_until_filter",
-    "invalid_cursor_400"
+    "invalid_cursor_400",
+    "prompt_search_case_insensitive",
+    "prompt_search_chinese"
   )
 } | ConvertTo-Json -Depth 5

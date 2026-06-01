@@ -603,7 +603,9 @@ The smoke creates four marked HTTP-origin jobs, cancels one, then verifies:
 4. status=cancelled returns only the cancelled probe;
 5. ingressOrigin=http returns all marked jobs;
 6. since/until filters apply to the createdAt window;
-7. malformed cursors return 400.
+7. malformed cursors return 400;
+8. prompt search is case-insensitive for English input;
+9. prompt search matches Chinese input.
 ```
 
 ## Cancel Job Smoke
