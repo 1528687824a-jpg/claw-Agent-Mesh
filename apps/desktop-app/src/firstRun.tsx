@@ -76,6 +76,14 @@ const firstRunCopy = {
     profile: "Detected profile",
     routing: "Recommended routing",
     stages: "Agent sequence",
+    reviewTitle: "Review before writing",
+    reviewItems: [
+      "Does the work profile describe your real role and daily work?",
+      "Does the routing mode fit how you expect the agent team to work?",
+      "Do the agent responsibilities, boundaries, and tone feel right?",
+      "Are any prompts too vague, too aggressive, or missing a workflow?",
+      "Treat this as a draft until you explicitly choose a backup-and-write step."
+    ],
     promptPreview: "Prompt preview",
     openclawBoundary:
       "This writes a safe desktop setup bundle first. Applying to real OpenClaw agent folders is a later explicit step with backups.",
@@ -125,6 +133,14 @@ const firstRunCopy = {
     profile: "识别出的工作画像",
     routing: "推荐编排模式",
     stages: "Agent 顺序",
+    reviewTitle: "写入前先检查",
+    reviewItems: [
+      "工作画像是否准确描述你的真实职业和日常工作？",
+      "推荐编排模式是否符合你期待的 agent 协作方式？",
+      "每个 agent 的职责、边界和语气是否合适？",
+      "有没有提示词太空、太激进，或漏掉关键工作流？",
+      "在你明确选择备份并写入之前，这里只是一版草稿。"
+    ],
     promptPreview: "提示词预览",
     openclawBoundary:
       "当前先写入安全的桌面 setup bundle。真正覆盖 OpenClaw agent 目录是后续显式步骤，并且必须带备份。",
@@ -423,6 +439,14 @@ export function FirstRunPanel({ language }: FirstRunPanelProps) {
               <dd>{profile.stageAgents.join(" -> ")}</dd>
             </div>
           </dl>
+          <div className="reviewChecklist">
+            <h4>{copy.reviewTitle}</h4>
+            <ul>
+              {copy.reviewItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
           <div className="promptPreviewGrid">
             {agents.map((agent) => (
               <article className="promptPreview" key={agent.id}>

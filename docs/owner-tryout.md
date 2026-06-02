@@ -87,6 +87,18 @@ In the desktop app:
 9. Switch to Console and confirm the API status reads online.
 ```
 
+In step 7, "confirm" means reviewing the generated draft after the interview,
+not approving anything blindly before seeing it. Check:
+
+```text
+1. whether the work profile describes your real role and daily work accurately;
+2. whether the recommended routing mode fits how you expect the agent team to work;
+3. whether each proposed agent has the right responsibility, boundary, and tone;
+4. whether any agent prompt is too vague, too aggressive, or missing a tool/workflow;
+5. whether the generated bundle is only a draft to review, or is ready for a later
+   backup-and-write step into the real OpenClaw agent framework.
+```
+
 Then in Console:
 
 ```text

@@ -12,6 +12,7 @@ $desktopExe = Join-Path $root "apps\desktop-app\src-tauri\target\release\agent-o
 $logPath = Join-Path $root "logs\desktop-launcher.log"
 $dockerProbeTimeoutSeconds = 10
 $dockerCommandTimeoutSeconds = 90
+$apiHealthUrl = "http://localhost:3000/health"
 
 Set-Location $root
 New-Item -ItemType Directory -Force -Path "logs", ".runtime" | Out-Null
@@ -161,6 +162,13 @@ function Test-HttpReady($Url) {
 try {
   Write-LaunchLog "Launcher started"
 
+  $mutex = [System.Threading.Mutex]::new($false, "Global\AgentOpenClawDesktopLauncher")
+  $lockTaken = $mutex.WaitOne(0)
+  if (-not $lockTaken) {
+    Write-LaunchLog "Another launcher instance is already running; exiting"
+    exit 0
+  }
+
   if (-not (Test-Path -LiteralPath $dockerCli)) {
     $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
     if (-not $dockerCommand) {
@@ -169,25 +177,29 @@ try {
     $dockerCli = $dockerCommand.Source
   }
 
-  $dockerReadyDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  $initialProbeTimeoutSeconds = [Math]::Min($dockerProbeTimeoutSeconds, [Math]::Max(1, $TimeoutSeconds))
-  if (-not (Test-DockerReady -TimeoutSeconds $initialProbeTimeoutSeconds)) {
-    Write-LaunchLog "Docker not ready; starting Docker Desktop"
-    Start-Service com.docker.service -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath $dockerDesktop) {
-      Start-Process -FilePath $dockerDesktop -WindowStyle Hidden
+  if (Test-HttpReady $apiHealthUrl) {
+    Write-LaunchLog "API already healthy; skipping Docker Compose startup"
+  } else {
+    $dockerReadyDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $initialProbeTimeoutSeconds = [Math]::Min($dockerProbeTimeoutSeconds, [Math]::Max(1, $TimeoutSeconds))
+    if (-not (Test-DockerReady -TimeoutSeconds $initialProbeTimeoutSeconds)) {
+      Write-LaunchLog "Docker not ready; starting Docker Desktop"
+      Start-Service com.docker.service -ErrorAction SilentlyContinue
+      if (Test-Path -LiteralPath $dockerDesktop) {
+        Start-Process -FilePath $dockerDesktop -WindowStyle Hidden
+      }
     }
+
+    $dockerReady = Wait-ForDockerReady -Deadline $dockerReadyDeadline -SleepSeconds 1
+    if (-not $dockerReady) {
+      throw "Docker daemon did not become ready within $TimeoutSeconds seconds"
+    }
+
+    Write-LaunchLog "Starting backend stack"
+    Invoke-ProcessWithTimeout -FilePath $dockerCli -ArgumentList @("compose", "up", "-d") -TimeoutSeconds $dockerCommandTimeoutSeconds | Out-Null
   }
 
-  $dockerReady = Wait-ForDockerReady -Deadline $dockerReadyDeadline -SleepSeconds 1
-  if (-not $dockerReady) {
-    throw "Docker daemon did not become ready within $TimeoutSeconds seconds"
-  }
-
-  Write-LaunchLog "Starting backend stack"
-  Invoke-ProcessWithTimeout -FilePath $dockerCli -ArgumentList @("compose", "up", "-d") -TimeoutSeconds $dockerCommandTimeoutSeconds | Out-Null
-
-  $apiReady = Wait-ForCondition -Condition { Test-HttpReady "http://localhost:3000/health" } -TimeoutSeconds $TimeoutSeconds -SleepSeconds 1
+  $apiReady = Wait-ForCondition -Condition { Test-HttpReady $apiHealthUrl } -TimeoutSeconds $TimeoutSeconds -SleepSeconds 1
   if (-not $apiReady) {
     throw "API did not become ready within $TimeoutSeconds seconds"
   }
@@ -209,4 +221,11 @@ try {
 } catch {
   Write-LaunchLog "Launcher failed: $($_.Exception.Message)"
   throw
+} finally {
+  if ($lockTaken) {
+    $mutex.ReleaseMutex()
+  }
+  if ($mutex) {
+    $mutex.Dispose()
+  }
 }

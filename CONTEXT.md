@@ -11,6 +11,78 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-02 Desktop Launcher Silent Failure And First Run Review Gate Checkpoint
+
+用户指出两个问题：
+
+```text
+1. 双击桌面 Agent OpenClaw.lnk 后“没有任何反应”。
+2. “确认生成内容方向”这个说法太含糊；用户还没有看到草稿，也没有和 Codex 讨论过具体确认什么。
+```
+
+本次诊断结论：
+
+```text
+1. 快捷方式本身存在，目标仍是 wscript.exe + scripts/launch-desktop-app.vbs。
+2. VBS 旧逻辑是隐藏启动 PowerShell 且不等待退出；launcher 失败时用户看不到任何错误，所以体感就是“没反应”。
+3. logs/desktop-launcher.log 显示真实失败原因：本地已有 http://localhost:3000/health 正常的 node API 占用 3000，launcher 仍执行 docker compose up -d，dockerized orchestrator-api 抢 3000 失败。
+4. 因此这次不是桌面 exe 缺失，也不是 Docker Desktop engine 坏掉，而是 launcher 没有识别“已有健康 API”，并且失败静默。
+```
+
+本次修复：
+
+```text
+1. scripts/launch-desktop-app.ps1 现在先检查 http://localhost:3000/health；若 API 已健康，直接跳过 Docker Compose 启动并打开桌面应用。
+2. launcher 增加全局 mutex：连续多次点击快捷方式时不会并发跑多个 launcher 去抢 Docker/端口。
+3. scripts/launch-desktop-app.vbs 改为等待 PowerShell 退出；如果启动失败，会弹出 Agent OpenClaw 提示框，并指向 logs/desktop-launcher.log。
+4. docs/owner-tryout.md 展开“确认生成内容方向”的真实含义：这是看到 First Run 草稿后的 review gate，不是事前盲批。
+5. apps/desktop-app/src/firstRun.tsx 在生成区新增 Review before writing / 写入前先检查 清单。
+6. apps/desktop-app/src/styles.css 增加 reviewChecklist 样式。
+```
+
+“确认生成内容方向”以后要说具体，意思是用户看到 First Run 生成草稿后检查：
+
+```text
+1. 工作画像是否准确描述真实职业和日常工作。
+2. 推荐 routing mode 是否符合期待的 agent 协作方式。
+3. 每个 agent 的职责、边界、语气是否合适。
+4. 提示词是否太空、太激进，或漏掉关键工具/工作流。
+5. 当前 bundle 是否只作为草稿继续修改，还是准备进入“备份 + 写入真实 OpenClaw agent 框架”的后续显式步骤。
+```
+
+本次验证：
+
+```text
+PowerShell syntax check for launch-desktop-app.ps1       passed
+npm run check                                            passed
+npm run check:no-secrets                                 passed
+npm --prefix apps/desktop-app run build                  passed
+npm --prefix apps/desktop-app exec tauri build -- --no-bundle
+                                                          passed, rebuilt release exe
+desktop shortcut launch                                  passed, opened agent-openclaw.exe
+launcher log                                             API already healthy; skipping Docker Compose startup
+npm run smoke:desktop-ui-prod -- --skip-api-start        passed, JOB-20260602-75878D51 cancelled
+API health                                               http://localhost:3000/health ok
+```
+
+当前本地状态：
+
+```text
+桌面快捷方式: C:\Users\Administrator\Desktop\Agent OpenClaw.lnk
+快捷方式目标: wscript.exe -> scripts/launch-desktop-app.vbs
+桌面进程: agent-openclaw.exe 可由快捷方式启动
+API: http://localhost:3000/health ok
+```
+
+下一步顺序：
+
+```text
+1. 用户先双击桌面 Agent OpenClaw.lnk，确认现在能打开桌面应用。
+2. 用户在 First Run 里看“写入前先检查”清单，判断生成的职业画像 / routing mode / agent prompts 哪些准确、哪些要改。
+3. 只有用户确认草稿方向后，才进入“备份 + 写入真实 OpenClaw agent 框架”；在此之前不覆盖真实 AGENTS.md。
+4. 上面两个问题确认后，再回到 alpha polish；图标、installer bundle、签名、release tag、公开 alpha 说明先等待。
+```
+
 ## 2026-06-02 Docker Backend Port-Kill Fix And Real Four-Mode Pass Checkpoint
 
 用户把最长等待要求从 10 分钟改成 5 分钟；同时确认桌面快捷方式不能再打开 PowerShell 终端窗口，应该打开真正的桌面应用面板。

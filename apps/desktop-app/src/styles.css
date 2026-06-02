@@ -653,6 +653,30 @@ select {
   overflow-wrap: anywhere;
 }
 
+.reviewChecklist {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid #d7dce4;
+  border-left: 3px solid #2d5b86;
+  background: #f7f9fc;
+}
+
+.reviewChecklist h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.reviewChecklist ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #3c4652;
+  line-height: 1.45;
+}
+
+.reviewChecklist li + li {
+  margin-top: 5px;
+}
+
 .promptPreviewGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
