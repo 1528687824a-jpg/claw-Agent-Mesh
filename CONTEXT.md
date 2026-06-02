@@ -11,6 +11,58 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-01 Desktop Full Handoff Checkpoint
+
+User requested a detailed, standalone context handoff for opening a new Codex
+conversation.
+
+Saved file:
+
+```text
+C:\Users\Administrator\Desktop\Agent-OpenClaw-完整上下文交接-20260601.md
+```
+
+Contents:
+
+```text
+- restore prompt for a new Codex conversation;
+- product goal and direction guardrails;
+- user workflow preferences;
+- key architecture concepts and routing-mode explanation;
+- important local context paths;
+- completed work across Feishu direction cleanup, Docker quickstart, README /
+  QUICKSTART, demo jobs, desktop/Tauri, release checklist, GitHub remote, and
+  hosted CI;
+- current git state and latest commits;
+- remaining ordered tasks;
+- note that paid provider/OpenClaw real checks require explicit operator
+  authorization;
+- answer to the user's question about viewing other Codex conversations.
+```
+
+Codex thread-access note:
+
+```text
+In the current tool context, Codex does not have an exposed read_thread /
+list_threads tool for arbitrary previous Codex conversations. Tool discovery
+only exposed multi-agent child-agent management tools, not cross-thread
+history readers. Therefore the reliable handoff path remains local context
+files unless a future session exposes thread-reading tools.
+```
+
+Next ordered tasks:
+
+```text
+1. In a new Codex conversation, read the desktop handoff file first if
+   continuing from scratch.
+2. Remaining alpha gate A: operator explicitly authorizes real provider spend,
+   configures M3 env, then run npm run smoke:m3-real-provider.
+3. Later with explicit authorization: OpenClaw real-mode validation across all
+   four routing modes.
+4. Optional polish after gates: app icon/signing/release tag notes and first
+   public alpha release preparation.
+```
+
 ## 2026-06-01 Final Hosted CI Confirmation Checkpoint
 
 Final observed state after the GitHub remote/CI work:
