@@ -11,6 +11,71 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-02 M3 Real Provider Smoke Checkpoint
+
+User asked where real-provider authorization happens. Codex clarified:
+
+```text
+.env holds local provider configuration only; it is not permission to spend
+provider quota. Explicit operator authorization happens in the conversation.
+```
+
+User then explicitly authorized one M3 real-provider smoke. Local `.env` was
+checked without printing secrets. It contained DeepSeek OpenAI-compatible
+configuration and an API key. Codex updated only `M3_PLANNER_MODEL` from the
+previous local value to the user's requested `deepseek-v4-pro`; the key was not
+printed or committed.
+
+Preflight:
+
+```text
+npm run smoke:m3-real-planner -> passed
+  clusterId=real-planner-smoke-generated
+  stageAgents=research-agent, writer-agent, video-agent
+```
+
+Authorized real-provider smoke:
+
+```text
+npm run smoke:m3-real-provider -> passed
+  provider=DeepSeek via openai-compatible planner
+  model=deepseek-v4-pro
+  clusterId=content-studio-demo
+  jobId=JOB-20260602-A219930D
+  terminalStatus=succeeded
+  stageAgents=research-agent, writer-agent, image-agent
+  checked=real_planner_provider_call,
+          generated_cluster_config_validation,
+          load_cluster_config_in_dbos_step,
+          run_demo_job_succeeded
+```
+
+Generated runtime artifacts stayed local under:
+
+```text
+.runtime/m3-real-provider-e2e/
+```
+
+Cleanup:
+
+```text
+npm run dev:stop -> completed; local API/worker/Postgres dev services stopped
+```
+
+Release checklist was updated: M3 real-provider smoke is now done with explicit
+operator authorization, and Git remote + hosted CI is also marked done. This
+means all listed alpha gates now have proof. Next ordered tasks:
+
+```text
+1. Commit this checkpoint and release-checklist update.
+2. Alpha release polish: repository/product naming note, app icon/signing
+   decision, release notes, and v0.1.0-alpha tag preparation.
+3. Optional CI hardening: pin Windows runner and/or add macOS/Linux Tauri probe
+   smoke jobs.
+4. Later with explicit authorization: OpenClaw real-mode validation across all
+   four routing modes.
+```
+
 ## 2026-06-01 Desktop Full Handoff Checkpoint
 
 User requested a detailed, standalone context handoff for opening a new Codex

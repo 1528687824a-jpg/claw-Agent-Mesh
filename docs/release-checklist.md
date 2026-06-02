@@ -52,10 +52,13 @@ Cross-platform installer probes    partial
   smoke:tauri-shell reports native packaging readiness on Windows, macOS, and
   Linux, but only Windows has a verified installer artifact so far
 
-M3 real-provider smoke             blocked on explicit operator authorization
-  do not run automatically because it may spend provider quota
+M3 real-provider smoke             done with explicit operator authorization
+  latest proof: 2026-06-02 DeepSeek openai-compatible planner,
+  model=deepseek-v4-pro, JOB-20260602-A219930D succeeded
 
-Git remote + hosted CI             blocked on repository remote setup
+Git remote + hosted CI             done
+  latest proof: 71a49c4 hosted CI success, followed by 00a9e17
+  desktop handoff checkpoint [skip ci]
 ```
 
 ## Pre-Release Local Commands
