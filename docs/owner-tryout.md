@@ -23,7 +23,9 @@ npm run tryout:shortcut
 ```
 
 That creates `Agent OpenClaw.lnk` on the Windows desktop. Double-clicking it
-starts the local backend and opens the Tauri desktop app.
+starts the local backend in the background and opens the Tauri desktop app. It
+logs startup details to `logs/desktop-launcher.log` instead of leaving a
+PowerShell build window in front of the product.
 
 The script starts:
 

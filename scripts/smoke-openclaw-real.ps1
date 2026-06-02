@@ -5,7 +5,7 @@ param(
     "classic_master_slave",
     "master_slave_discussion"
   ),
-  [int]$JobTimeoutSeconds = 900
+  [int]$JobTimeoutSeconds = 300
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,18 +40,30 @@ function Assert-True {
 function Wait-ForTerminalStatus {
   param(
     [string]$JobId,
-    [int]$TimeoutSeconds = 900
+    [int]$TimeoutSeconds = 300
   )
 
-  for ($i = 0; $i -lt $TimeoutSeconds; $i++) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 1
-    $job = Invoke-RestMethod -Uri "http://localhost:3000/jobs/$JobId"
+    $job = Invoke-RestMethod -Uri "http://localhost:3000/jobs/$JobId" -TimeoutSec 5
     if (@("succeeded", "failed", "waiting_for_human", "cancelled") -contains $job.status) {
       return $job
     }
   }
 
   throw "Timed out waiting for $JobId"
+}
+
+function Invoke-NpmScript {
+  param(
+    [string]$ScriptName
+  )
+
+  & npm run $ScriptName
+  if ($LASTEXITCODE -ne 0) {
+    throw "npm run $ScriptName failed with exit code $LASTEXITCODE"
+  }
 }
 
 Set-Location $root
@@ -68,8 +80,8 @@ $env:FEISHU_DRY_RUN = "true"
 Remove-Item Env:\AGENT_CLUSTER_CONFIG_PATH -ErrorAction SilentlyContinue
 Remove-Item Env:\DBOS_TEST_CRASH_ONCE_AFTER -ErrorAction SilentlyContinue
 
-npm run dev:stop | Out-Host
-npm run dev:start | Out-Host
+Invoke-NpmScript "dev:stop"
+Invoke-NpmScript "dev:start"
 
 $results = @()
 

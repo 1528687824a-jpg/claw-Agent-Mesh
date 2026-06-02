@@ -4457,3 +4457,73 @@ npm run smoke:openclaw-real                              attempted, but timed ou
    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes master_slave_discussion
 4. 四个 mode 都通过后，再进入 alpha polish：图标质量、installer bundle、签名、release tag、公开 alpha 说明。
 ```
+
+## 2026-06-02 Docker Backend Port-Kill Fix And Real Four-Mode Pass Checkpoint
+
+用户把最长等待要求从 10 分钟改成 5 分钟；同时确认桌面快捷方式不能再打开 PowerShell 终端窗口，应该打开真正的桌面应用面板。
+
+本次定位到的根因：
+
+```text
+1. 旧桌面快捷方式目标是 powershell.exe + scripts/start-desktop-tryout.ps1，会把启动终端放在用户面前；这不是合格的桌面产品入口。
+2. Docker Desktop 反复卡在 Starting Docker Engine 的更深层原因，是 scripts/start-dev.ps1 / scripts/stop-dev.ps1 看到 3000 端口被占用就 Stop-Process OwningProcess。
+3. 当 docker-compose 的 orchestrator-api 暴露 3000 时，Windows 侧 owning process 往往是 com.docker.backend；旧脚本等于直接杀了 Docker backend。
+4. Docker 日志中对应现象是 wsl-bootstrap 持续尝试关闭 previous bootstrap，最后 timeout waiting for previous bootstrap process / waiting for shutdown: context deadline exceeded。
+5. 结论：这次不是 provider 或 OpenClaw job 卡住，而是本地脚本误杀 Docker backend 后，Docker Desktop/WSL engine 陷入半启动状态。
+```
+
+本次修复：
+
+```text
+1. scripts/create-desktop-shortcut.ps1 改为创建 wscript.exe 快捷方式，指向隐藏 VBS launcher：
+   scripts/launch-desktop-app.vbs
+2. 新增 scripts/launch-desktop-app.ps1：隐藏启动后端 compose stack，等待 http://localhost:3000/health，然后启动 release exe：
+   apps/desktop-app/src-tauri/target/release/agent-openclaw.exe
+3. launcher 日志写入：
+   logs/desktop-launcher.log
+4. start-dev / stop-dev / launcher 的 docker info、compose、inspect 调用改为带硬超时的 .NET ProcessStartInfo wrapper，避免 Docker CLI 无限挂住。
+5. start-dev / stop-dev 增加 Stop-NonDockerPortListeners：端口清理永远跳过 Docker/WSL 进程，不再 Stop-Process com.docker.backend。
+6. start-dev 会先用 compose stop/rm orchestrator-api dbos-worker 释放旧容器占用的 3000，再启动 Postgres 和本地 real-mode API。
+7. stop-dev 对 docker compose down 失败只 warning，不再因此中断本地进程清理。
+8. scripts/smoke-openclaw-real.ps1 默认 JobTimeoutSeconds 改为 300 秒；REST poll 加 5 秒请求 timeout；npm run dev:stop/dev:start 失败会立刻 throw，不再继续 POST job。
+9. README.md / docs/owner-tryout.md 已说明桌面快捷方式为隐藏 launcher，不应再把 PowerShell 窗口放到产品前面。
+```
+
+本次验证：
+
+```text
+PowerShell syntax check for start-dev / stop-dev / launch-desktop-app / smoke-openclaw-real   passed
+npm run dev:stop && npm run dev:start && GET http://localhost:3000/health                     passed
+desktop shortcut target check                                                                  passed, target=wscript.exe
+desktop launcher path check                                                                    passed, opened agent-openclaw.exe with title Agent OpenClaw
+npm run check                                                                                  passed
+npm run check:no-secrets                                                                       passed
+```
+
+OpenClaw real mode 四种 routing mode 端到端验证已逐个通过，均使用 300 秒 job timeout：
+
+```text
+OpenClaw version: OpenClaw 2026.5.7 (eeef486)
+
+supervisor_pipeline        JOB-20260602-B3B04879  succeeded  realCompletionEvents=2  stageOutputArtifacts=1
+pipeline                   JOB-20260602-21B6703E  succeeded  realCompletionEvents=2  stageOutputArtifacts=1
+classic_master_slave       JOB-20260602-DFF28943  succeeded  realCompletionEvents=1  stageOutputArtifacts=1
+master_slave_discussion    JOB-20260602-C6A6D84C  succeeded  realCompletionEvents=4  stageOutputArtifacts=2
+```
+
+当前本地状态：
+
+```text
+Docker Engine: docker info 可返回
+API: http://localhost:3000/health ok
+桌面快捷方式: C:\Users\Administrator\Desktop\Agent OpenClaw.lnk
+```
+
+下一步顺序：
+
+```text
+1. 用户先从桌面双击 Agent OpenClaw.lnk 体验真实桌面 First Run：熟悉界面、配置 key、完成工作访谈、检查生成的 agent prompts。
+2. 用户确认 First Run 生成方向后，再做“备份 + 写入真实 OpenClaw agent 框架”的显式步骤；不要在用户未确认前覆盖真实 AGENTS.md。
+3. 进入 alpha polish：图标质量、installer bundle、签名、release tag、首个公开 alpha 说明。
+4. GitHub README/介绍页再参考 supermemory、skills 等高星项目的介绍逻辑；同时评估 supermemory 对本产品长期记忆/用户工作画像能力的可借鉴点。
+```

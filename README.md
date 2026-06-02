@@ -63,6 +63,10 @@ To put a launch icon on the Windows desktop:
 npm run tryout:shortcut
 ```
 
+The shortcut opens the desktop app through a hidden launcher. Backend startup is
+logged to `logs/desktop-launcher.log`; it should not leave a terminal window in
+front of the app.
+
 See `docs/owner-tryout.md` for the local experience checklist.
 
 ## Quickstart

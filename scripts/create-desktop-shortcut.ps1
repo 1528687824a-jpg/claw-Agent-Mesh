@@ -7,19 +7,19 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $desktopPath = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktopPath "$ShortcutName.lnk"
-$startScript = Join-Path $root "scripts\start-desktop-tryout.ps1"
+$launcherScript = Join-Path $root "scripts\launch-desktop-app.vbs"
 $iconPath = Join-Path $root "apps\desktop-app\src-tauri\icons\icon.ico"
 
-if (-not (Test-Path -LiteralPath $startScript)) {
-  throw "Start script not found: $startScript"
+if (-not (Test-Path -LiteralPath $launcherScript)) {
+  throw "Launcher script not found: $launcherScript"
 }
 
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = "powershell.exe"
-$shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$startScript`""
+$shortcut.TargetPath = "wscript.exe"
+$shortcut.Arguments = "`"$launcherScript`""
 $shortcut.WorkingDirectory = $root
-$shortcut.Description = "Start Agent OpenClaw local backend and desktop app"
+$shortcut.Description = "Launch Agent OpenClaw desktop app"
 if (Test-Path -LiteralPath $iconPath) {
   $shortcut.IconLocation = $iconPath
 }
