@@ -33,6 +33,25 @@ OpenClaw real mode across all four routing modes.
 Those remain useful follow-up work, but they should not displace first-run
 onboarding and release trust signals.
 
+## Public Release Readiness
+
+Passing the alpha gates means the project is technically eligible for a first
+alpha, but it should not be published before the maintainer can experience the
+local product loop directly.
+
+Before cutting `v0.1.0-alpha`:
+
+```text
+1. Run npm run tryout:start.
+2. Confirm the desktop console opens and shows API online.
+3. Create at least one job from the console.
+4. Inspect messages and timeline.
+5. Stop with npm run tryout:stop after the manual tryout is done.
+```
+
+This keeps the release path anchored in "can I use it?" rather than "can CI
+pass?"
+
 ## Current Gate State
 
 ```text
@@ -59,6 +78,10 @@ M3 real-provider smoke             done with explicit operator authorization
 Git remote + hosted CI             done
   latest proof: 71a49c4 hosted CI success, followed by 00a9e17
   desktop handoff checkpoint [skip ci]
+
+Owner local tryout path            done for dev/browser console
+  latest proof: npm run tryout:start -- -NoOpen passed on 2026-06-02;
+  desktop UI smoke created JOB-20260602-41970DBA and rendered timeline
 ```
 
 ## Pre-Release Local Commands

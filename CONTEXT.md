@@ -11,6 +11,104 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-02 Owner Tryout Path Checkpoint
+
+User clarified an important product sequencing rule:
+
+```text
+The product should first be experienced by the maintainer locally. Do not treat
+"alpha gates complete" as "immediately publish to GitHub."
+```
+
+Codex read Claude's latest progress review from:
+
+```text
+C:\Users\Administrator\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\local-agent-mode-sessions\20d984a4-bff5-4fee-8d1b-d7cb84f94ea0\9fcc6203-63e1-4bb6-98e5-063de7217ee7\local_f8d6cc4b-0943-4503-a752-3f2db911ddd6\outputs\2082B4~1.MD
+```
+
+Judgment:
+
+```text
+Useful: alpha gates are complete; release notes/tag are now reachable.
+Rejected as next step: immediately cutting v0.1.0-alpha before the maintainer
+can sit down and try the product loop.
+New priority: owner local tryout before public release.
+```
+
+Implementation:
+
+```text
+Added scripts/start-owner-tryout.ps1
+Added scripts/stop-owner-tryout.ps1
+Added docs/owner-tryout.md
+Added package scripts:
+  npm run tryout:start
+  npm run tryout:stop
+Updated README.md with an Owner Tryout section.
+Updated docs/release-checklist.md with a Public Release Readiness section that
+requires local maintainer tryout before cutting v0.1.0-alpha.
+```
+
+Owner tryout behavior:
+
+```text
+npm run tryout:start
+  starts Docker Compose HTTP-only mock stack:
+    postgres
+    orchestrator-api on http://localhost:3000
+    dbos-worker
+  starts desktop web console on http://127.0.0.1:5173 or next free port
+  opens the desktop console unless -NoOpen is passed
+  records state in .runtime/owner-tryout.json
+  writes desktop log to logs/owner-tryout-desktop.log
+
+npm run tryout:stop
+  stops the desktop dev server
+  runs docker compose down --remove-orphans
+  keeps Docker volumes for later inspection
+```
+
+Verification:
+
+```text
+npm run tryout:start -- -NoOpen -> passed
+  Desktop UI: http://127.0.0.1:5173
+  API:        http://localhost:3000
+
+$env:DESKTOP_UI_SMOKE_PORT='5173'
+npm run smoke:desktop-ui -- --skip-api-start -> passed
+  jobId=JOB-20260602-41970DBA
+  terminalStatus=cancelled
+  cancelAttempted=true
+  filteredJobVisible=true
+  timeFilterVisible=true
+  customSinceVisible=true
+  timelineCursorRequests=5
+  timelineItems=53
+  screenshotPath=.runtime/desktop-ui-smoke/desktop-ui-dev-smoke.png
+
+npm run check -> passed
+npm run check:no-secrets -> passed
+```
+
+Operational note:
+
+```text
+The owner tryout stack was intentionally left running so the user can open and
+experience the UI immediately. Stop it with npm run tryout:stop.
+```
+
+Current next ordered tasks:
+
+```text
+1. Commit and push the owner tryout path.
+2. User manually tries the running desktop console at http://127.0.0.1:5173.
+3. Fix any owner-experience friction found during that tryout.
+4. Then prepare v0.1.0-alpha release notes/tag/assets.
+5. Later with explicit authorization: OpenClaw real-mode validation across all
+   four routing modes.
+```
+
 ## 2026-06-02 Workflow Rule Reconfirmation Checkpoint
 
 User reconfirmed the standing workflow rule and made it more explicit:

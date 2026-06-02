@@ -14,6 +14,8 @@
     "dev:worker": "tsx apps/dbos-worker/src/worker.ts",
     "dev:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-dev.ps1",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-dev.ps1",
+    "tryout:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-owner-tryout.ps1",
+    "tryout:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-owner-tryout.ps1",
     "smoke:feishu-webhook": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-feishu-webhook.ps1",
     "smoke:docker-compose": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-docker-compose.ps1",
     "smoke:http-only": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-http-only-end-to-end.ps1",

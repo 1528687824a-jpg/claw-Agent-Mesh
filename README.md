@@ -15,6 +15,24 @@ provider keys.
 
 ![Agent OpenClaw desktop UI](docs/assets/desktop-ui-mvp.png)
 
+## Owner Tryout
+
+Before cutting a public release, use the owner tryout path to feel the product
+locally from the desktop console:
+
+```powershell
+npm run tryout:start
+```
+
+This starts the HTTP-only mock backend, starts the desktop web console, and
+opens it in a browser. Stop it with:
+
+```powershell
+npm run tryout:stop
+```
+
+See `docs/owner-tryout.md` for the local experience checklist.
+
 ## Quickstart
 
 Start the local stack:
@@ -189,6 +207,7 @@ docs/PROJECT_STRUCTURE.md
 docs/BOUNDARIES.md
 docs/job-cancellation-semantics.md
 docs/m3-real-provider-operator-guide.md
+docs/owner-tryout.md
 docs/desktop-installer-notes.md
 docs/release-checklist.md
 docs/reference-feishu-public-ingress.md
