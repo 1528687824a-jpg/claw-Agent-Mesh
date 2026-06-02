@@ -11,6 +11,58 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-02 Tauri Release Console Window Fix Checkpoint
+
+用户指出：现在双击桌面快捷方式能打开 Agent OpenClaw 面板，但旁边还有一个黑色终端窗口；关闭黑色窗口时，桌面面板也会跟着关闭。
+
+本次诊断结论：
+
+```text
+1. 不是快捷方式/VBS launcher 的黑窗；快捷方式已经是 wscript.exe 隐藏 launcher。
+2. 进程树显示 agent-openclaw.exe 自己下面挂了 conhost.exe。
+3. apps/desktop-app/src-tauri/src/main.rs 缺少 Windows GUI 子系统配置。
+4. 因此 release exe 被 Windows 当作控制台程序启动，系统给它分配终端；关闭终端会结束 agent-openclaw.exe，所以面板跟着关。
+```
+
+本次修复：
+
+```text
+apps/desktop-app/src-tauri/src/main.rs
+  - 新增：
+    #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+  - 只影响 release 构建；debug 构建仍保留控制台，方便开发日志。
+```
+
+本次验证：
+
+```text
+npm run check                                            passed
+npm run check:no-secrets                                 passed
+npm --prefix apps/desktop-app exec tauri build -- --no-bundle
+                                                          passed, rebuilt release exe
+desktop shortcut launch                                  passed
+process tree                                             agent-openclaw.exe childProcesses only msedgewebview2.exe
+hasConhostChild                                          false
+launcher log                                             API already healthy; Launching desktop app; completed
+```
+
+当前本地状态：
+
+```text
+桌面快捷方式: C:\Users\Administrator\Desktop\Agent OpenClaw.lnk
+release exe: apps/desktop-app/src-tauri/target/release/agent-openclaw.exe 已重建
+预期用户体验: 双击快捷方式只出现 Agent OpenClaw 面板，不再出现黑色终端窗口；关闭面板才结束 app。
+```
+
+下一步顺序：
+
+```text
+1. 用户再次双击桌面 Agent OpenClaw.lnk，确认黑色窗口不再出现。
+2. 如果只剩桌面面板，继续在 First Run 里检查“写入前先检查”清单和生成草稿。
+3. 用户确认草稿方向后，再做“备份 + 写入真实 OpenClaw agent 框架”；此步骤前不覆盖真实 AGENTS.md。
+4. 前两个体验问题都确认后，再继续 alpha polish。
+```
+
 ## 2026-06-02 Desktop Launcher Silent Failure And First Run Review Gate Checkpoint
 
 用户指出两个问题：
