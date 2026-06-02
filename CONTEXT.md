@@ -11,6 +11,206 @@ This rule was confirmed by the user on 2026-05-28 and applies to subsequent
 work on this project unless the user changes it.
 ```
 
+## 2026-06-02 Docker Backend Port-Kill Fix And Real Four-Mode Pass Checkpoint
+
+用户把最长等待要求从 10 分钟改成 5 分钟；同时确认桌面快捷方式不能再打开 PowerShell 终端窗口，应该打开真正的桌面应用面板。
+
+本次定位到的根因：
+
+```text
+1. 旧桌面快捷方式目标是 powershell.exe + scripts/start-desktop-tryout.ps1，会把启动终端放在用户面前；这不是合格的桌面产品入口。
+2. Docker Desktop 反复卡在 Starting Docker Engine 的更深层原因，是 scripts/start-dev.ps1 / scripts/stop-dev.ps1 看到 3000 端口被占用就 Stop-Process OwningProcess。
+3. 当 docker-compose 的 orchestrator-api 暴露 3000 时，Windows 侧 owning process 往往是 com.docker.backend；旧脚本等于直接杀了 Docker backend。
+4. Docker 日志中对应现象是 wsl-bootstrap 持续尝试关闭 previous bootstrap，最后 timeout waiting for previous bootstrap process / waiting for shutdown: context deadline exceeded。
+5. 结论：这次不是 provider 或 OpenClaw job 卡住，而是本地脚本误杀 Docker backend 后，Docker Desktop/WSL engine 陷入半启动状态。
+```
+
+本次修复：
+
+```text
+1. scripts/create-desktop-shortcut.ps1 改为创建 wscript.exe 快捷方式，指向隐藏 VBS launcher：
+   scripts/launch-desktop-app.vbs
+2. 新增 scripts/launch-desktop-app.ps1：隐藏启动后端 compose stack，等待 http://localhost:3000/health，然后启动 release exe：
+   apps/desktop-app/src-tauri/target/release/agent-openclaw.exe
+3. launcher 日志写入：
+   logs/desktop-launcher.log
+4. start-dev / stop-dev / launcher 的 docker info、compose、inspect 调用改为带硬超时的 .NET ProcessStartInfo wrapper，避免 Docker CLI 无限挂住。
+5. start-dev / stop-dev 增加 Stop-NonDockerPortListeners：端口清理永远跳过 Docker/WSL 进程，不再 Stop-Process com.docker.backend。
+6. start-dev 会先用 compose stop/rm orchestrator-api dbos-worker 释放旧容器占用的 3000，再启动 Postgres 和本地 real-mode API。
+7. stop-dev 对 docker compose down 失败只 warning，不再因此中断本地进程清理。
+8. scripts/smoke-openclaw-real.ps1 默认 JobTimeoutSeconds 改为 300 秒；REST poll 加 5 秒请求 timeout；npm run dev:stop/dev:start 失败会立刻 throw，不再继续 POST job。
+9. README.md / docs/owner-tryout.md 已说明桌面快捷方式为隐藏 launcher，不应再把 PowerShell 窗口放到产品前面。
+```
+
+本次验证：
+
+```text
+PowerShell syntax check for start-dev / stop-dev / launch-desktop-app / smoke-openclaw-real   passed
+npm run dev:stop && npm run dev:start && GET http://localhost:3000/health                     passed
+desktop shortcut target check                                                                  passed, target=wscript.exe
+desktop launcher path check                                                                    passed, opened agent-openclaw.exe with title Agent OpenClaw
+npm run check                                                                                  passed
+npm run check:no-secrets                                                                       passed
+```
+
+OpenClaw real mode 四种 routing mode 端到端验证已逐个通过，均使用 300 秒 job timeout：
+
+```text
+OpenClaw version: OpenClaw 2026.5.7 (eeef486)
+
+supervisor_pipeline        JOB-20260602-B3B04879  succeeded  realCompletionEvents=2  stageOutputArtifacts=1
+pipeline                   JOB-20260602-21B6703E  succeeded  realCompletionEvents=2  stageOutputArtifacts=1
+classic_master_slave       JOB-20260602-DFF28943  succeeded  realCompletionEvents=1  stageOutputArtifacts=1
+master_slave_discussion    JOB-20260602-C6A6D84C  succeeded  realCompletionEvents=4  stageOutputArtifacts=2
+```
+
+当前本地状态：
+
+```text
+Docker Engine: docker info 可返回
+API: http://localhost:3000/health ok
+桌面快捷方式: C:\Users\Administrator\Desktop\Agent OpenClaw.lnk
+```
+
+下一步顺序：
+
+```text
+1. 用户先从桌面双击 Agent OpenClaw.lnk 体验真实桌面 First Run：熟悉界面、配置 key、完成工作访谈、检查生成的 agent prompts。
+2. 用户确认 First Run 生成方向后，再做“备份 + 写入真实 OpenClaw agent 框架”的显式步骤；不要在用户未确认前覆盖真实 AGENTS.md。
+3. 进入 alpha polish：图标质量、installer bundle、签名、release tag、首个公开 alpha 说明。
+4. GitHub README/介绍页再参考 supermemory、skills 等高星项目的介绍逻辑；同时评估 supermemory 对本产品长期记忆/用户工作画像能力的可借鉴点。
+```
+
+## 2026-06-02 Desktop Shortcut And Real Smoke Blocker Checkpoint
+
+用户指出桌面应用体验仍缺少“桌面图标/从哪里打开”的用户入口。已补齐：
+
+```text
+1. 已在 Windows 桌面创建快捷方式：
+   C:\Users\Administrator\Desktop\Agent OpenClaw.lnk
+2. 快捷方式目标：
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File scripts/start-desktop-tryout.ps1
+3. 新增 repo 脚本：
+   scripts/create-desktop-shortcut.ps1
+4. 新增 npm script：
+   npm run tryout:shortcut
+5. README 和 docs/owner-tryout.md 已写明：可先创建桌面图标，然后双击启动本地后端 + Tauri 桌面应用。
+```
+
+同时改进真实 OpenClaw smoke：
+
+```text
+1. scripts/smoke-openclaw-real.ps1 已从单一 classic_master_slave 改为默认验证四种 routing mode：
+   supervisor_pipeline / pipeline / classic_master_slave / master_slave_discussion
+2. 新增参数：
+   -Modes <mode...>
+   -JobTimeoutSeconds <seconds>
+3. 每个 mode 会逐步输出：Starting / Created job / Completed job。
+4. 每个 mode 检查：job succeeded、routingMode 正确、有 tool.openclaw_agent_completed 且 payload.mode=real、有 stage_output artifact。
+```
+
+本次验证与阻塞：
+
+```text
+npm run tryout:shortcut                                  passed, created desktop shortcut
+PowerShell syntax check for create-desktop-shortcut.ps1   passed
+PowerShell syntax check for smoke-openclaw-real.ps1       passed
+npm run check                                            passed
+npm run check:no-secrets                                 passed
+npm run smoke:openclaw-real                              attempted, but timed out after 30 minutes
+```
+
+真实 smoke 未完成，不可记为通过。超时后发现：
+
+```text
+1. smoke-openclaw-real / start-dev 有残留进程，已停止。
+2. stale .runtime/locks/dev-stack.lock 已删除。
+3. WSL 中未发现一次性 openclaw agent 调用残留，只剩 OpenClaw gateway/node 常驻服务。
+4. Docker Desktop daemon 状态异常：docker info 对 Linux engine API 持续 timeout/500。
+5. Postgres 5432 未监听，db:migrate ECONNREFUSED。
+6. 已尝试 Start-Service com.docker.service、重启 Docker Desktop 进程、wsl --shutdown 后重启 Docker，仍未恢复 docker info。
+7. 当前阻塞是 Docker Desktop daemon/engine，没有可靠本地 Postgres/API，因此不能继续真实四模式验证。
+```
+
+恢复后下一步：
+
+```text
+1. 先让 Docker Desktop 恢复到 docker info 正常、docker compose ps 正常。
+2. 运行 npm run tryout:desktop 或双击桌面 Agent OpenClaw.lnk，确认产品入口可打开。
+3. 重新跑 OpenClaw real mode 验证。建议先逐个 mode 跑，定位更清楚：
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes supervisor_pipeline
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes pipeline
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes classic_master_slave
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes master_slave_discussion
+4. 四个 mode 都通过后，再进入 alpha polish：图标质量、installer bundle、签名、release tag、公开 alpha 说明。
+```
+
+## 2026-06-02 Desktop First Run Checkpoint
+
+用户纠正并确认：OpenClaw real mode 四种 routing mode 端到端验证是“之后顺序任务”，不是桌面首次引导流程的一部分。桌面应用打开后应先让用户熟悉界面，再配置 provider key，之后按预设工作问题提问，生成用户职业/日常工作的画像，并据此生成可写入 agent 框架的个性化提示词。
+
+本次完成：
+
+```text
+1. apps/desktop-app 新增 First Run 视图，默认入口为首次启动，不再先进入纯控制台。
+2. 顶部新增 First Run / Console 切换；语言切换继续支持 English / 中文。
+3. First Run 包含四段：界面熟悉、provider key、工作访谈、生成 agent prompts。
+4. provider 默认 DeepSeek / https://api.deepseek.com / deepseek-v4-pro。
+5. API key 只留在当前页面内存；生成文件只记录 apiKeyConfigured=true，不写明文 key。
+6. 生成安全 desktop setup bundle：first-run-profile.json、cluster.config.json、agents/<id>/AGENTS.md。
+7. Tauri 后端新增 save_first_run_setup command，把 bundle 写到 app data 的 desktop-first-run 目录。
+8. 根脚本新增 npm run tryout:desktop，优先打开 Tauri 桌面应用；npm run tryout:start 仅作为浏览器 dev fallback。
+9. scripts/start-desktop-tryout.ps1 会清理旧 browser-dev Vite 进程，避免 5173 被占用导致 tauri dev 启动失败。
+10. API 默认 CORS 增加 5174 本地生产预览 origin，保留 tauri://localhost。
+11. smoke-desktop-ui 加固：禁用 Edge 扩展 background page 干扰，显式导航到目标 URL，并在默认 First Run 后切到 Console 执行原控制台 smoke。
+12. README、apps/desktop-app/README.md、docs/owner-tryout.md 已改为桌面应用优先体验路径。
+```
+
+本次验证：
+
+```text
+npm run check                                            passed
+npm run check:no-secrets                                 passed
+npm --prefix apps/desktop-app run build                  passed
+npm run smoke:desktop-ui -- --skip-api-start             passed, JOB-20260602-47932C28 cancelled
+npm run smoke:tauri-shell                                passed
+cargo check (apps/desktop-app/src-tauri)                 passed
+npm run smoke:desktop-ui-prod -- --skip-api-start        passed, JOB-20260602-0D282EB4 cancelled
+npm --prefix apps/desktop-app exec tauri build -- --no-bundle
+                                                          passed, built target/release/agent-openclaw.exe
+```
+
+视觉验证截图：
+
+```text
+.runtime/desktop-ui-smoke/first-run-desktop.png
+.runtime/desktop-ui-smoke/first-run-narrow.png
+```
+
+注意：
+
+```text
+完整 npm --prefix apps/desktop-app run tauri:build 超过 424 秒工具超时；
+release exe 已生成，但 installer bundle 目录未生成产物。
+因此当前已验证桌面应用 release 编译，不把 installer packaging 视为已完成。
+```
+
+当前本地栈状态：
+
+```text
+Docker Compose: postgres / orchestrator-api / dbos-worker healthy
+API: http://localhost:3000/health ok
+```
+
+下一步顺序：
+
+```text
+1. 先让用户从 npm run tryout:desktop 体验桌面 First Run：配置 key、回答工作访谈、检查生成的画像和 agent prompts。
+2. 用户确认生成内容方向后，再做“备份 + 写入真实 OpenClaw agent 框架”的显式步骤；不要在未确认前覆盖真实 AGENTS.md。
+3. 继续之前的顺序任务：在明确真实 provider 调用费用授权下，跑 OpenClaw real mode 四种 routing mode 端到端验证。
+4. 进入 alpha polish：图标、签名/installer bundle、release tag、首个公开 alpha 说明。
+```
+
 ## 2026-06-02 GitHub README And Language Toggle Checkpoint
 
 User gave two GitHub README references:
@@ -4327,203 +4527,4 @@ D:\聊天记录\Codex\context-vault\agent-openclaw\20260523-084430-agent-opencla
 ```text
 .env 里已有 FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_VERIFICATION_TOKEN / FEISHU_DEFAULT_CHAT_ID / FEISHU_BOT_OPEN_ID / FEISHU_DRY_RUN=false。
 保存上下文只记录“已配置”，不得保存明文密钥。
-```
-## 2026-06-02 Desktop First Run Checkpoint
-
-用户纠正并确认：OpenClaw real mode 四种 routing mode 端到端验证是“之后顺序任务”，不是桌面首次引导流程的一部分。桌面应用打开后应先让用户熟悉界面，再配置 provider key，之后按预设工作问题提问，生成用户职业/日常工作的画像，并据此生成可写入 agent 框架的个性化提示词。
-
-本次完成：
-
-```text
-1. apps/desktop-app 新增 First Run 视图，默认入口为首次启动，不再先进入纯控制台。
-2. 顶部新增 First Run / Console 切换；语言切换继续支持 English / 中文。
-3. First Run 包含四段：界面熟悉、provider key、工作访谈、生成 agent prompts。
-4. provider 默认 DeepSeek / https://api.deepseek.com / deepseek-v4-pro。
-5. API key 只留在当前页面内存；生成文件只记录 apiKeyConfigured=true，不写明文 key。
-6. 生成安全 desktop setup bundle：first-run-profile.json、cluster.config.json、agents/<id>/AGENTS.md。
-7. Tauri 后端新增 save_first_run_setup command，把 bundle 写到 app data 的 desktop-first-run 目录。
-8. 根脚本新增 npm run tryout:desktop，优先打开 Tauri 桌面应用；npm run tryout:start 仅作为浏览器 dev fallback。
-9. scripts/start-desktop-tryout.ps1 会清理旧 browser-dev Vite 进程，避免 5173 被占用导致 tauri dev 启动失败。
-10. API 默认 CORS 增加 5174 本地生产预览 origin，保留 tauri://localhost。
-11. smoke-desktop-ui 加固：禁用 Edge 扩展 background page 干扰，显式导航到目标 URL，并在默认 First Run 后切到 Console 执行原控制台 smoke。
-12. README、apps/desktop-app/README.md、docs/owner-tryout.md 已改为桌面应用优先体验路径。
-```
-
-本次验证：
-
-```text
-npm run check                                            passed
-npm run check:no-secrets                                 passed
-npm --prefix apps/desktop-app run build                  passed
-npm run smoke:desktop-ui -- --skip-api-start             passed, JOB-20260602-47932C28 cancelled
-npm run smoke:tauri-shell                                passed
-cargo check (apps/desktop-app/src-tauri)                 passed
-npm run smoke:desktop-ui-prod -- --skip-api-start        passed, JOB-20260602-0D282EB4 cancelled
-npm --prefix apps/desktop-app exec tauri build -- --no-bundle
-                                                          passed, built target/release/agent-openclaw.exe
-```
-
-视觉验证截图：
-
-```text
-.runtime/desktop-ui-smoke/first-run-desktop.png
-.runtime/desktop-ui-smoke/first-run-narrow.png
-```
-
-注意：
-
-```text
-完整 npm --prefix apps/desktop-app run tauri:build 超过 424 秒工具超时；
-release exe 已生成，但 installer bundle 目录未生成产物。
-因此当前已验证桌面应用 release 编译，不把 installer packaging 视为已完成。
-```
-
-当前本地栈状态：
-
-```text
-Docker Compose: postgres / orchestrator-api / dbos-worker healthy
-API: http://localhost:3000/health ok
-```
-
-下一步顺序：
-
-```text
-1. 先让用户从 npm run tryout:desktop 体验桌面 First Run：配置 key、回答工作访谈、检查生成的画像和 agent prompts。
-2. 用户确认生成内容方向后，再做“备份 + 写入真实 OpenClaw agent 框架”的显式步骤；不要在未确认前覆盖真实 AGENTS.md。
-3. 继续之前的顺序任务：在明确真实 provider 调用费用授权下，跑 OpenClaw real mode 四种 routing mode 端到端验证。
-4. 进入 alpha polish：图标、签名/installer bundle、release tag、首个公开 alpha 说明。
-```
-
-## 2026-06-02 Desktop Shortcut And Real Smoke Blocker Checkpoint
-
-用户指出桌面应用体验仍缺少“桌面图标/从哪里打开”的用户入口。已补齐：
-
-```text
-1. 已在 Windows 桌面创建快捷方式：
-   C:\Users\Administrator\Desktop\Agent OpenClaw.lnk
-2. 快捷方式目标：
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File scripts/start-desktop-tryout.ps1
-3. 新增 repo 脚本：
-   scripts/create-desktop-shortcut.ps1
-4. 新增 npm script：
-   npm run tryout:shortcut
-5. README 和 docs/owner-tryout.md 已写明：可先创建桌面图标，然后双击启动本地后端 + Tauri 桌面应用。
-```
-
-同时改进真实 OpenClaw smoke：
-
-```text
-1. scripts/smoke-openclaw-real.ps1 已从单一 classic_master_slave 改为默认验证四种 routing mode：
-   supervisor_pipeline / pipeline / classic_master_slave / master_slave_discussion
-2. 新增参数：
-   -Modes <mode...>
-   -JobTimeoutSeconds <seconds>
-3. 每个 mode 会逐步输出：Starting / Created job / Completed job。
-4. 每个 mode 检查：job succeeded、routingMode 正确、有 tool.openclaw_agent_completed 且 payload.mode=real、有 stage_output artifact。
-```
-
-本次验证与阻塞：
-
-```text
-npm run tryout:shortcut                                  passed, created desktop shortcut
-PowerShell syntax check for create-desktop-shortcut.ps1   passed
-PowerShell syntax check for smoke-openclaw-real.ps1       passed
-npm run check                                            passed
-npm run check:no-secrets                                 passed
-npm run smoke:openclaw-real                              attempted, but timed out after 30 minutes
-```
-
-真实 smoke 未完成，不可记为通过。超时后发现：
-
-```text
-1. smoke-openclaw-real / start-dev 有残留进程，已停止。
-2. stale .runtime/locks/dev-stack.lock 已删除。
-3. WSL 中未发现一次性 openclaw agent 调用残留，只剩 OpenClaw gateway/node 常驻服务。
-4. Docker Desktop daemon 状态异常：docker info 对 Linux engine API 持续 timeout/500。
-5. Postgres 5432 未监听，db:migrate ECONNREFUSED。
-6. 已尝试 Start-Service com.docker.service、重启 Docker Desktop 进程、wsl --shutdown 后重启 Docker，仍未恢复 docker info。
-7. 当前阻塞是 Docker Desktop daemon/engine，没有可靠本地 Postgres/API，因此不能继续真实四模式验证。
-```
-
-恢复后下一步：
-
-```text
-1. 先让 Docker Desktop 恢复到 docker info 正常、docker compose ps 正常。
-2. 运行 npm run tryout:desktop 或双击桌面 Agent OpenClaw.lnk，确认产品入口可打开。
-3. 重新跑 OpenClaw real mode 验证。建议先逐个 mode 跑，定位更清楚：
-   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes supervisor_pipeline
-   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes pipeline
-   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes classic_master_slave
-   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-openclaw-real.ps1 -Modes master_slave_discussion
-4. 四个 mode 都通过后，再进入 alpha polish：图标质量、installer bundle、签名、release tag、公开 alpha 说明。
-```
-
-## 2026-06-02 Docker Backend Port-Kill Fix And Real Four-Mode Pass Checkpoint
-
-用户把最长等待要求从 10 分钟改成 5 分钟；同时确认桌面快捷方式不能再打开 PowerShell 终端窗口，应该打开真正的桌面应用面板。
-
-本次定位到的根因：
-
-```text
-1. 旧桌面快捷方式目标是 powershell.exe + scripts/start-desktop-tryout.ps1，会把启动终端放在用户面前；这不是合格的桌面产品入口。
-2. Docker Desktop 反复卡在 Starting Docker Engine 的更深层原因，是 scripts/start-dev.ps1 / scripts/stop-dev.ps1 看到 3000 端口被占用就 Stop-Process OwningProcess。
-3. 当 docker-compose 的 orchestrator-api 暴露 3000 时，Windows 侧 owning process 往往是 com.docker.backend；旧脚本等于直接杀了 Docker backend。
-4. Docker 日志中对应现象是 wsl-bootstrap 持续尝试关闭 previous bootstrap，最后 timeout waiting for previous bootstrap process / waiting for shutdown: context deadline exceeded。
-5. 结论：这次不是 provider 或 OpenClaw job 卡住，而是本地脚本误杀 Docker backend 后，Docker Desktop/WSL engine 陷入半启动状态。
-```
-
-本次修复：
-
-```text
-1. scripts/create-desktop-shortcut.ps1 改为创建 wscript.exe 快捷方式，指向隐藏 VBS launcher：
-   scripts/launch-desktop-app.vbs
-2. 新增 scripts/launch-desktop-app.ps1：隐藏启动后端 compose stack，等待 http://localhost:3000/health，然后启动 release exe：
-   apps/desktop-app/src-tauri/target/release/agent-openclaw.exe
-3. launcher 日志写入：
-   logs/desktop-launcher.log
-4. start-dev / stop-dev / launcher 的 docker info、compose、inspect 调用改为带硬超时的 .NET ProcessStartInfo wrapper，避免 Docker CLI 无限挂住。
-5. start-dev / stop-dev 增加 Stop-NonDockerPortListeners：端口清理永远跳过 Docker/WSL 进程，不再 Stop-Process com.docker.backend。
-6. start-dev 会先用 compose stop/rm orchestrator-api dbos-worker 释放旧容器占用的 3000，再启动 Postgres 和本地 real-mode API。
-7. stop-dev 对 docker compose down 失败只 warning，不再因此中断本地进程清理。
-8. scripts/smoke-openclaw-real.ps1 默认 JobTimeoutSeconds 改为 300 秒；REST poll 加 5 秒请求 timeout；npm run dev:stop/dev:start 失败会立刻 throw，不再继续 POST job。
-9. README.md / docs/owner-tryout.md 已说明桌面快捷方式为隐藏 launcher，不应再把 PowerShell 窗口放到产品前面。
-```
-
-本次验证：
-
-```text
-PowerShell syntax check for start-dev / stop-dev / launch-desktop-app / smoke-openclaw-real   passed
-npm run dev:stop && npm run dev:start && GET http://localhost:3000/health                     passed
-desktop shortcut target check                                                                  passed, target=wscript.exe
-desktop launcher path check                                                                    passed, opened agent-openclaw.exe with title Agent OpenClaw
-npm run check                                                                                  passed
-npm run check:no-secrets                                                                       passed
-```
-
-OpenClaw real mode 四种 routing mode 端到端验证已逐个通过，均使用 300 秒 job timeout：
-
-```text
-OpenClaw version: OpenClaw 2026.5.7 (eeef486)
-
-supervisor_pipeline        JOB-20260602-B3B04879  succeeded  realCompletionEvents=2  stageOutputArtifacts=1
-pipeline                   JOB-20260602-21B6703E  succeeded  realCompletionEvents=2  stageOutputArtifacts=1
-classic_master_slave       JOB-20260602-DFF28943  succeeded  realCompletionEvents=1  stageOutputArtifacts=1
-master_slave_discussion    JOB-20260602-C6A6D84C  succeeded  realCompletionEvents=4  stageOutputArtifacts=2
-```
-
-当前本地状态：
-
-```text
-Docker Engine: docker info 可返回
-API: http://localhost:3000/health ok
-桌面快捷方式: C:\Users\Administrator\Desktop\Agent OpenClaw.lnk
-```
-
-下一步顺序：
-
-```text
-1. 用户先从桌面双击 Agent OpenClaw.lnk 体验真实桌面 First Run：熟悉界面、配置 key、完成工作访谈、检查生成的 agent prompts。
-2. 用户确认 First Run 生成方向后，再做“备份 + 写入真实 OpenClaw agent 框架”的显式步骤；不要在用户未确认前覆盖真实 AGENTS.md。
-3. 进入 alpha polish：图标质量、installer bundle、签名、release tag、首个公开 alpha 说明。
-4. GitHub README/介绍页再参考 supermemory、skills 等高星项目的介绍逻辑；同时评估 supermemory 对本产品长期记忆/用户工作画像能力的可借鉴点。
 ```
