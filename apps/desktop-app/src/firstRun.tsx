@@ -43,12 +43,12 @@ const firstRunCopy = {
   en: {
     heading: "First Run",
     intro:
-      "Set up the desktop workflow: learn the console, configure a provider, answer the interview, then generate personalized OpenClaw agent prompts.",
+      "Set up the web workflow: learn the console, configure a provider, answer the interview, then generate personalized OpenClaw agent prompts.",
     stepGuide: "1. Get Oriented",
     stepProvider: "2. Provider Key",
     stepInterview: "3. Work Interview",
     stepGenerate: "4. Agent Prompts",
-    guideTitle: "What this desktop app controls",
+    guideTitle: "What this web panel controls",
     guideBody:
       "The console starts jobs, switches routing modes, inspects messages and timelines, and cancels runs. First-run setup teaches the platform what kind of work you do before it specializes agents.",
     providerTitle: "Configure a real planner provider",
@@ -67,10 +67,10 @@ const firstRunCopy = {
     qualityBar: "Quality bar",
     constraints: "Constraints",
     generateTitle: "Generated work profile and agent prompts",
-    save: "Write desktop setup files",
+    save: "Save setup preview",
     saved: "Saved",
     browserFallback:
-      "Browser dev mode cannot write app files. The setup preview was saved to localStorage; run the Tauri desktop app to write files.",
+      "The web panel saved this setup preview to localStorage. A later backup-and-write step will apply it to real OpenClaw agent folders.",
     copyPath: "Output",
     providerMissing: "Add provider, model, and key before saving.",
     profile: "Detected profile",
@@ -86,7 +86,7 @@ const firstRunCopy = {
     ],
     promptPreview: "Prompt preview",
     openclawBoundary:
-      "This writes a safe desktop setup bundle first. Applying to real OpenClaw agent folders is a later explicit step with backups.",
+      "This saves a safe setup preview first. Applying to real OpenClaw agent folders is a later explicit step with backups.",
     fields: {
       role: "Independent content/product builder",
       industry: "AI tools and creator products",
@@ -100,12 +100,12 @@ const firstRunCopy = {
   zh: {
     heading: "首次启动",
     intro:
-      "在桌面应用里完成产品初始化：熟悉控制台、配置 provider、回答工作问题，然后生成适合你职业和任务的 OpenClaw agent 提示词。",
+      "在网页操作面板里完成产品初始化：熟悉控制台、配置 provider、回答工作问题，然后生成适合你职业和任务的 OpenClaw agent 提示词。",
     stepGuide: "1. 熟悉界面",
     stepProvider: "2. 配置 Key",
     stepInterview: "3. 工作访谈",
     stepGenerate: "4. 生成 Agent",
-    guideTitle: "这个桌面应用控制什么",
+    guideTitle: "这个网页操作面板控制什么",
     guideBody:
       "控制台负责启动任务、切换编排模式、查看消息和时间线、取消运行。首次启动会先理解你的工作类型，再把预设 agent 提示词个性化。",
     providerTitle: "配置真实 planner provider",
@@ -124,10 +124,10 @@ const firstRunCopy = {
     qualityBar: "质量标准",
     constraints: "约束",
     generateTitle: "生成的职业画像和 Agent 提示词",
-    save: "写入桌面配置文件",
+    save: "保存配置预览",
     saved: "已保存",
     browserFallback:
-      "浏览器开发模式不能写入应用文件。预览已保存到 localStorage；要写入文件请运行 Tauri 桌面应用。",
+      "网页面板已把预览保存到 localStorage。真正写入 OpenClaw agent 目录会在后续备份确认步骤里完成。",
     copyPath: "输出位置",
     providerMissing: "保存前需要填写 provider、模型和 key。",
     profile: "识别出的工作画像",
@@ -143,7 +143,7 @@ const firstRunCopy = {
     ],
     promptPreview: "提示词预览",
     openclawBoundary:
-      "当前先写入安全的桌面 setup bundle。真正覆盖 OpenClaw agent 目录是后续显式步骤，并且必须带备份。",
+      "当前先保存安全的 setup 预览。真正覆盖 OpenClaw agent 目录是后续显式步骤，并且必须带备份。",
     fields: {
       role: "独立内容/产品创作者",
       industry: "AI 工具与创作者产品",

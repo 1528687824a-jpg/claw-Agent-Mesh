@@ -1,5 +1,84 @@
 # Agent OpenClaw Context Checkpoint
 
+## 2026-06-02 Web Panel Pivot And Docker-Decoupled Entry Checkpoint
+
+用户指出关键产品方向问题：
+
+```text
+1. 双击快捷方式仍然会先启动 Docker Desktop，再打开面板；这让用户感觉整个产品围绕 Docker Desktop 搭建。
+2. 用户明确要求：之前关于“点击快捷方式打开桌面面板”的方向不做了，随主流改做网页版操作面板。
+3. 用户给出参考项目：
+   - qingchencloud/clawpanel
+   - itq5/OpenClaw-Admin
+   - zhaoxinyi02/ClawPanel
+```
+
+本次判断：
+
+```text
+1. 当前快捷方式打开 Docker 的原因不是 UI 本身需要 Docker，而是 scripts/launch-desktop-app.ps1 把“打开面板”和“启动后端 Docker Compose 栈”绑在一起。
+2. Docker Desktop 是当前后端 quickstart / Postgres / API / worker 的一种本地运行方式，不应该成为“打开操作面板”的隐式前置条件。
+3. 产品主入口改为 Web panel：用户先在浏览器打开管理面板；后端运行时由用户明确启动，可以是 docker compose、local dev、未来的远程网关或其他部署方式。
+4. Tauri 桌面壳和 Windows 快捷方式降级为可选包装/历史路径，不再作为 alpha P0 或 owner tryout 主入口。
+```
+
+本次已改：
+
+```text
+新增 scripts/start-web-panel.ps1：
+  - 启动 React/Vite web panel。
+  - 不启动 Docker Desktop。
+  - 不执行 docker compose。
+  - API 健康则显示 online；API 不健康也照常打开面板并显示 offline。
+  - 写入 .runtime/owner-tryout.json，明确 backendAutoStarted=false。
+
+package.json：
+  - 新增 npm run tryout:web。
+  - npm run tryout:start 现在改为 web-only 面板入口。
+  - 旧 full-stack Docker + web 路径保留为 npm run tryout:stack。
+  - 旧 tryout:desktop / tryout:shortcut 暂保留，但不再是主路径。
+
+scripts/stop-owner-tryout.ps1：
+  - 支持停止 webPid。
+  - 当当前 tryout 是 web-panel-only 时，不再 docker compose down。
+
+apps/desktop-app/src：
+  - requesterId 从 desktop-app 改为 web-panel。
+  - cancel reason 改为 Cancelled from web panel。
+  - First Run 文案从 desktop app 改为 web panel / 网页操作面板。
+
+docs/README：
+  - README、docs/owner-tryout.md、apps/desktop-app/README.md 改为 Web panel 主入口。
+  - release checklist alpha gate 从 desktop console / installer 改为 Web panel 可打开且不隐式启动 Docker。
+  - Tauri/installer 改为可选包装，不再阻塞 alpha。
+```
+
+本次验证：
+
+```text
+npm run check                                      passed
+npm run check:no-secrets                          passed
+npm --prefix apps/desktop-app run build           passed
+npm run tryout:web -- -NoOpen                     passed
+  web panel: http://127.0.0.1:5173
+  backendAutoStarted=false
+  did not start Docker Desktop / Docker Compose
+npm run tryout:start -- -NoOpen                   passed, alias now uses web-only entry
+npm run tryout:stop                               passed, Docker Compose was not touched
+git diff --check                                  only CRLF warnings
+```
+
+下一步顺序：
+
+```text
+1. 用户用 npm run tryout:web 或 npm run tryout:start 打开网页版操作面板，确认它符合“先打开面板，不先启动 Docker”的体验。
+2. 把目录和命名从 apps/desktop-app 逐步整理为 web-panel / console-app，避免历史命名继续误导。
+3. 参考 OpenClaw-Admin / ClawPanel 的信息架构，重做 Web panel 左侧导航与页面：Dashboard、Jobs、Agents、Models/Provider、Memory/Prompts、Settings。
+4. 做“后端连接配置”页面：允许选择 localhost API / OpenClaw Gateway / 远程 API，而不是写死 localhost:3000。
+5. 做 First Run 到真实 OpenClaw agent 框架的“备份 + 写入”显式流程。
+6. 之后再做 GitHub README 公开介绍和 alpha 发布 polish；Tauri/桌面安装器暂不抢主线。
+```
+
 ## 2026-06-02 RTK Token-Saving Evaluation Checkpoint
 
 用户询问 `rtk-ai/rtk` 是否可以给 Agent OpenClaw 的工作省 token。

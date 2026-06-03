@@ -163,7 +163,7 @@ export async function createJob(input: CreateJobInput) {
     method: "POST",
     body: JSON.stringify({
       prompt: input.prompt,
-      requesterId: "desktop-app",
+      requesterId: "web-panel",
       routingMode: input.routingMode,
       maxModelCalls: input.maxModelCalls
     })
@@ -195,8 +195,8 @@ export async function cancelJob(jobId: string) {
   }>(`/jobs/${jobId}/cancel`, {
     method: "POST",
     body: JSON.stringify({
-      reason: "Cancelled from desktop console",
-      requesterId: "desktop-app"
+      reason: "Cancelled from web panel",
+      requesterId: "web-panel"
     })
   });
 }

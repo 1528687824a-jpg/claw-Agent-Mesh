@@ -6,9 +6,9 @@ OpenClaw.
 
 Use it when a one-off bot script is too fragile, but a hosted workflow product
 is too opaque. It gives you a durable DBOS/Postgres control plane, four routing
-modes, HTTP and Feishu adapters, and a desktop control console so an agent
-cluster can be started, inspected, cancelled, and later generated from an
-interview-style config flow.
+modes, HTTP and Feishu adapters, and a web control panel so an agent cluster can
+be started, inspected, cancelled, and later generated from an interview-style
+config flow.
 
 ## Why This Exists
 
@@ -27,15 +27,15 @@ OpenClaw-native     a platform layer around OpenClaw, not a replacement for it
 
 ![HTTP-only quickstart demo](docs/assets/quickstart-demo.gif)
 
-![Agent OpenClaw desktop UI](docs/assets/desktop-ui-mvp.png)
+![Agent OpenClaw web panel](docs/assets/desktop-ui-mvp.png)
 
 ## Choose Your Path
 
 ```text
-I want to feel the desktop product     npm run tryout:desktop
-I want a desktop shortcut              npm run tryout:shortcut
-I want the browser dev fallback        npm run tryout:start
-I want the clean public quickstart     docker compose up --build
+I want to open the web panel           npm run tryout:web
+I want the same default alias          npm run tryout:start
+I want the backend stack               docker compose up --build
+I want the old full-stack tryout       npm run tryout:stack
 I want to generate a cluster           read docs/m3-real-provider-operator-guide.md
 I want to understand future memory     read docs/experience-memory.md
 ```
@@ -43,29 +43,26 @@ I want to understand future memory     read docs/experience-memory.md
 ## Owner Tryout
 
 Before cutting a public release, use the owner tryout path to feel the product
-locally from the Tauri desktop app:
+locally from the browser-based web panel:
 
 ```powershell
-npm run tryout:desktop
+npm run tryout:web
 ```
 
-This starts the HTTP-only mock backend, opens the desktop app on First Run, and
-lets you configure a provider key, answer the work interview, generate a safe
-agent setup bundle, then switch into the console. Stop it with:
+This opens the web panel on First Run. It does not start Docker Desktop or
+Docker Compose. If `http://localhost:3000` is already running, the panel shows
+API online; otherwise it still opens and shows API offline. Start the backend
+separately when you want live jobs:
+
+```powershell
+docker compose up --build
+```
+
+Stop the web panel with:
 
 ```powershell
 npm run tryout:stop
 ```
-
-To put a launch icon on the Windows desktop:
-
-```powershell
-npm run tryout:shortcut
-```
-
-The shortcut opens the desktop app through a hidden launcher. Backend startup is
-logged to `logs/desktop-launcher.log`; it should not leave a terminal window in
-front of the app.
 
 See `docs/owner-tryout.md` for the local experience checklist.
 
@@ -157,7 +154,7 @@ HTTP job API                  POST /jobs, GET /jobs, messages, timeline, cancel
 Durable orchestration          DBOS checkpoints + Postgres business state
 Routing modes                  supervisor, pipeline, classic, discussion
 M3 config generation           mock and fake-provider smokes pass
-Desktop console                create, search/filter jobs, inspect timeline, cancel
+Web panel                      create, search/filter jobs, inspect timeline, cancel
 Docker quickstart              Postgres + API + worker in mock HTTP-only mode
 Optional adapters              Feishu local webhook, Feishu public ingress reference
 OpenClaw real mode             adapter path exists; local smoke requires WSL setup
@@ -167,32 +164,28 @@ OpenClaw and ClawPanel are external products. This repository contains the
 platform layer, templates, docs, and verification scripts that call OpenClaw
 through a CLI adapter instead of modifying OpenClaw source.
 
-## Desktop Console
+## Web Panel
 
-The desktop shell lives under `apps/desktop-app`. It is a React/Tauri app for
-the same HTTP API with two product views:
+The web panel currently lives under `apps/desktop-app` for historical reasons.
+It is a React/Vite app for the same HTTP API with two product views:
 
 ```text
 First Run   guide, provider key, work interview, generated agent prompts
 Console     create, search/filter jobs, inspect timelines, cancel runs
 ```
 
-First Run keeps the raw provider key in memory and writes only a safe setup
-bundle under the app data directory. Applying generated prompts into real
-OpenClaw agent folders is a later explicit step with backups.
+First Run keeps the raw provider key in memory and saves only a safe preview in
+browser state. Applying generated prompts into real OpenClaw agent folders is a
+later explicit step with backups.
 
-For the browser development fallback:
+Open the web panel:
 
 ```powershell
-npm install --prefix apps/desktop-app
-npm --prefix apps/desktop-app run dev
+npm run tryout:web
 ```
 
-Then open `http://localhost:5173` while the API is running. Full Tauri builds
-require Rust/Cargo plus the native desktop packaging toolchain on the host. On
-Windows that means Visual Studio Build Tools with MSVC and a Windows SDK. The
-first local packaging proof and verified Windows installer artifact paths are tracked in
-`docs/desktop-installer-notes.md`.
+Optional Tauri packaging can wrap the same panel later, but it is no longer the
+primary product path.
 
 ## Local Checks
 

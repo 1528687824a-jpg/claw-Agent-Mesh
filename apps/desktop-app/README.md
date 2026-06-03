@@ -1,10 +1,10 @@
-# Agent OpenClaw Desktop Shell
+# Agent OpenClaw Web Panel
 
-This is the first Tauri delivery shell for Agent OpenClaw.
+This is the browser-based control panel for Agent OpenClaw.
 
-The v1 desktop app expects the backend stack to be running locally through
-Docker Compose or the development scripts, then talks to `http://localhost:3000`.
-It now has two top-level views:
+The panel can open without Docker Desktop. It talks to `http://localhost:3000`
+when an orchestrator API is already running, and otherwise shows API offline. It
+has two top-level views:
 
 ```text
 First Run   orient the owner, configure a provider key, answer a work interview,
@@ -30,21 +30,21 @@ cancel action through POST /jobs/:id/cancel
 From the repo root, the product-like owner path is:
 
 ```powershell
-npm run tryout:desktop
+npm run tryout:web
 ```
 
-That starts the local backend stack and opens the Tauri desktop app.
+That opens the web panel only. It does not start Docker Desktop or Docker
+Compose.
 
 Manual development path:
 
 ```powershell
-docker compose up --build
 npm install --prefix apps/desktop-app
-npm --prefix apps/desktop-app run tauri:dev
+npm --prefix apps/desktop-app run dev
 ```
 
-The First Run save command writes the preview bundle under the app data
-directory in `desktop-first-run`:
+Start `docker compose up --build` in a separate terminal only when you want live
+jobs. The First Run save command currently stores the preview in browser state:
 
 ```text
 first-run-profile.json
@@ -52,10 +52,10 @@ cluster.config.json
 agents/<agent-id>/AGENTS.md
 ```
 
-The current repository smoke validates the shell structure and records whether
-the Rust/Tauri build toolchain is installed. Full Tauri packaging requires Rust
-(`cargo` and `rustc`) plus the host native packaging toolchain. On Windows that
-means Visual Studio Build Tools with MSVC and a Windows SDK.
+The old Tauri shell can still wrap this panel later, but it is no longer the
+primary product path. Full Tauri packaging requires Rust (`cargo` and `rustc`)
+plus the host native packaging toolchain. On Windows that means Visual Studio
+Build Tools with MSVC and a Windows SDK.
 
 Installer build notes and the verified Windows artifact paths are tracked in
 `docs/desktop-installer-notes.md`.

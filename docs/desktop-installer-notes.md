@@ -116,8 +116,9 @@ The initial build proof found these issues in order:
 
 ## Caveats
 
-The v1 desktop app is a thin client. It does not embed Postgres, the API, or
-the DBOS worker. Start the local backend first:
+The Tauri desktop shell is now an optional wrapper around the web panel, not the
+primary product path. It does not embed Postgres, the API, or the DBOS worker.
+Start the local backend first when testing live jobs:
 
 ```powershell
 docker compose up --build

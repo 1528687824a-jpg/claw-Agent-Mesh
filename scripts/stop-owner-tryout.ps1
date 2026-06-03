@@ -9,10 +9,16 @@ Set-Location $root
 $statePath = Join-Path $root ".runtime\owner-tryout.json"
 if (Test-Path -LiteralPath $statePath) {
   $state = Get-Content -LiteralPath $statePath | ConvertFrom-Json
-  if ($state.desktopPid) {
-    Stop-Process -Id $state.desktopPid -Force -ErrorAction SilentlyContinue
+  foreach ($pidValue in @($state.webPid, $state.desktopPid)) {
+    if ($pidValue) {
+      Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+    }
   }
+  $hasBackendFlag = $state.PSObject.Properties.Name -contains "backendAutoStarted"
+  $shouldStopCompose = (-not $hasBackendFlag) -or ($state.backendAutoStarted -eq $true)
   Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
+} else {
+  $shouldStopCompose = $true
 }
 
 $desktopProcesses = Get-CimInstance Win32_Process | Where-Object {
@@ -32,8 +38,12 @@ if (-not (Test-Path -LiteralPath $dockerCli)) {
   }
 }
 
-if (Test-Path -LiteralPath $dockerCli) {
+if ($shouldStopCompose -and (Test-Path -LiteralPath $dockerCli)) {
   & $dockerCli compose down --remove-orphans
 }
 
-Write-Output "Owner tryout stopped. Docker volumes were kept."
+if ($shouldStopCompose) {
+  Write-Output "Owner tryout stopped. Docker volumes were kept."
+} else {
+  Write-Output "Owner tryout web panel stopped. Docker Compose was not touched."
+}
