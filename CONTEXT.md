@@ -1,5 +1,46 @@
 # Agent OpenClaw Context Checkpoint
 
+## 2026-06-02 Desktop App Entry Reinstated Checkpoint
+
+用户最新决定：
+
+```text
+用户撤回上一轮“改做网页版操作面板”的方向，明确表示：
+“还是想做桌面应用来启动操作面板。网页不做了，回退到上一次。”
+```
+
+本次处理：
+
+```text
+1. 已用非破坏性 git revert 回退上一轮 Web panel pivot 提交：
+   - reverted commit: 9381975 Pivot owner tryout to web panel
+   - revert commit:   04aceed Revert "Pivot owner tryout to web panel"
+2. 代码、README、owner tryout、release checklist、package scripts 已回到上一版桌面应用主入口方向。
+3. scripts/start-web-panel.ps1 已删除。
+4. npm run tryout:start / tryout:desktop / tryout:shortcut 的语义恢复到上一版桌面体验路径。
+```
+
+当前产品方向恢复为：
+
+```text
+1. Agent OpenClaw 继续做桌面应用来启动/承载操作面板。
+2. Tauri 桌面应用仍是 owner tryout 和本地体验主入口。
+3. 网页版操作面板方向暂不做，不作为 alpha P0。
+4. 但必须把用户体验讲清楚：桌面应用、后端 API、Docker Desktop/Compose 之间的关系不能让用户困惑。
+5. Docker Desktop 不是“面板 UI”本身的依赖；它只是当前后端栈的一种本地启动方式。后续需要在桌面应用里把“后端未启动/正在启动/需要 Docker”的状态解释清楚。
+```
+
+本轮后续顺序任务：
+
+```text
+1. 用户继续从桌面快捷方式 Agent OpenClaw.lnk 打开桌面应用操作面板。
+2. Codex 需要把桌面启动体验文案/状态做清楚：什么时候只是打开面板，什么时候需要启动后端，什么时候会触发 Docker。
+3. 继续完善桌面 First Run：配置 key、工作访谈、生成并 review agent prompts。
+4. 做“备份 + 写入真实 OpenClaw agent 框架”的显式流程。
+5. 再补桌面启动/后端状态相关 smoke，避免黑窗、静默失败、Docker 状态不清楚这些问题回归。
+6. 之后再进入 alpha polish：图标、签名、release tag、公开 alpha 说明和 GitHub README。
+```
+
 ## 2026-06-02 RTK Token-Saving Evaluation Checkpoint
 
 用户询问 `rtk-ai/rtk` 是否可以给 Agent OpenClaw 的工作省 token。
