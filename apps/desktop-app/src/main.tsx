@@ -1,6 +1,28 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  AlertTriangle,
+  Bot,
+  Boxes,
+  CheckCircle2,
+  ChevronRight,
+  Gauge,
+  History,
+  KeyRound,
+  Languages,
+  LockKeyhole,
+  MessageSquare,
+  Play,
+  RefreshCw,
+  Search,
+  Settings,
+  ShieldQuestion,
+  SlidersHorizontal,
+  Sparkles,
+  TerminalSquare,
+  X
+} from "lucide-react";
+import {
   cancelJob,
   createJob,
   getHealth,
@@ -20,7 +42,17 @@ type ApiState = "checking" | "online" | "offline";
 type JobStatusFilter = "all" | "running" | "waiting_for_human" | "cancelled";
 type JobTimeFilter = "all" | "24h" | "7d" | "custom";
 type Language = "en" | "zh";
-type AppView = "setup" | "console";
+type AppView = "dashboard" | "setup" | "jobs" | "agents" | "models" | "memory" | "settings";
+type TourAnchor = "activity" | "dashboard" | "setup" | "jobs" | "settings";
+
+type SecurityRecord = {
+  passwordSalt: string;
+  passwordHash: string;
+  recoveryQuestion: string;
+  recoverySalt: string;
+  recoveryHash: string;
+  updatedAt: string;
+};
 
 const routingModes: RoutingMode[] = [
   "supervisor_pipeline",
@@ -60,7 +92,8 @@ const languageOptions: Array<{ id: Language; label: string }> = [
 
 const translations = {
   en: {
-    subtitle: "Local multi-agent control console",
+    appName: "Agent OpenClaw",
+    subtitle: "Local OpenClaw control desk",
     apiOnline: "API online",
     apiOffline: "API offline",
     apiChecking: "Checking API",
@@ -68,6 +101,14 @@ const translations = {
     languageLabel: "Language",
     setupTab: "First Run",
     consoleTab: "Console",
+    dashboard: "Dashboard",
+    jobsView: "Jobs",
+    agentsView: "Agents",
+    modelsView: "Models",
+    memoryView: "Memory",
+    settingsView: "Settings",
+    startSetup: "Start First Run",
+    openJobs: "Open Jobs",
     newJob: "New Job",
     routing: "Routing",
     budget: "Budget",
@@ -91,6 +132,70 @@ const translations = {
     latestItems: "latest items",
     complete: "complete",
     noTimelineEvents: "No timeline events.",
+    runningJobs: "Running jobs",
+    totalJobs: "Total jobs",
+    latestJob: "Latest job",
+    noLatestJob: "No job yet",
+    gatewayPanel: "Gateway",
+    gatewayHint: "Backend status and local API address",
+    currentModel: "Planner model",
+    modelHint: "DeepSeek / deepseek-v4-pro",
+    agentHint: "Agent framework",
+    memoryHint: "Prompts and experience memory",
+    settingsHint: "Security, language, and local preferences",
+    securityTitle: "Security",
+    securityIntro: "Set a local panel password and a recovery question.",
+    password: "Password",
+    confirmPassword: "Confirm password",
+    recoveryQuestion: "Recovery question",
+    recoveryAnswer: "Recovery answer",
+    saveSecurity: "Save security",
+    securitySaved: "Security settings saved.",
+    passwordMismatch: "Passwords do not match.",
+    securityMissing: "Add a password and recovery answer.",
+    lockTitle: "Agent OpenClaw",
+    lockSubtitle: "Enter the local panel password.",
+    unlock: "Unlock",
+    forgotPassword: "Forgot password",
+    usePassword: "Use password",
+    recoveryFailed: "Recovery answer did not match.",
+    unlockFailed: "Password did not match.",
+    tourSkip: "Skip",
+    tourNext: "Next",
+    tourDone: "Done",
+    tourProgress: "Step",
+    tourSteps: [
+      {
+        anchor: "activity",
+        title: "Left activity bar",
+        body: "Switch between the dashboard, first-run setup, jobs, agents, models, memory, and settings."
+      },
+      {
+        anchor: "dashboard",
+        title: "Dashboard",
+        body: "Check gateway status, job health, current model, and the next useful action from the first screen."
+      },
+      {
+        anchor: "setup",
+        title: "First Run",
+        body: "Configure the provider, answer the work interview, and generate personalized OpenClaw agent prompts."
+      },
+      {
+        anchor: "jobs",
+        title: "Jobs and timeline",
+        body: "Create jobs, choose a routing mode, inspect messages, and cancel runs when needed."
+      },
+      {
+        anchor: "settings",
+        title: "Settings",
+        body: "The lower-left settings button opens security, language, and local preferences."
+      }
+    ],
+    navGroups: {
+      operate: "Operate",
+      build: "Build",
+      system: "System"
+    },
     statusFilters: {
       all: "All",
       running: "Running",
@@ -125,7 +230,8 @@ const translations = {
     }
   },
   zh: {
-    subtitle: "本地多 Agent 控制台",
+    appName: "Agent OpenClaw",
+    subtitle: "本地 OpenClaw 操作台",
     apiOnline: "API 在线",
     apiOffline: "API 离线",
     apiChecking: "正在检查 API",
@@ -133,6 +239,14 @@ const translations = {
     languageLabel: "语言",
     setupTab: "首次启动",
     consoleTab: "控制台",
+    dashboard: "仪表盘",
+    jobsView: "任务",
+    agentsView: "Agent",
+    modelsView: "模型",
+    memoryView: "记忆",
+    settingsView: "设置",
+    startSetup: "开始首次启动",
+    openJobs: "打开任务",
     newJob: "新任务",
     routing: "编排模式",
     budget: "预算",
@@ -156,6 +270,70 @@ const translations = {
     latestItems: "最新事件",
     complete: "完整",
     noTimelineEvents: "没有时间线事件。",
+    runningJobs: "运行中任务",
+    totalJobs: "任务总数",
+    latestJob: "最近任务",
+    noLatestJob: "还没有任务",
+    gatewayPanel: "Gateway",
+    gatewayHint: "后端状态和本地 API 地址",
+    currentModel: "Planner 模型",
+    modelHint: "DeepSeek / deepseek-v4-pro",
+    agentHint: "Agent 框架",
+    memoryHint: "提示词和经验记忆",
+    settingsHint: "安全、语言和本地偏好",
+    securityTitle: "安全设置",
+    securityIntro: "设置本地面板密码和忘记密码密保问题。",
+    password: "管理密码",
+    confirmPassword: "确认密码",
+    recoveryQuestion: "密保问题",
+    recoveryAnswer: "密保答案",
+    saveSecurity: "保存安全设置",
+    securitySaved: "安全设置已保存。",
+    passwordMismatch: "两次密码不一致。",
+    securityMissing: "请填写密码和密保答案。",
+    lockTitle: "Agent OpenClaw",
+    lockSubtitle: "请输入本地面板密码。",
+    unlock: "解锁",
+    forgotPassword: "忘记密码",
+    usePassword: "使用密码",
+    recoveryFailed: "密保答案不匹配。",
+    unlockFailed: "密码不匹配。",
+    tourSkip: "跳过",
+    tourNext: "下一步",
+    tourDone: "完成",
+    tourProgress: "步骤",
+    tourSteps: [
+      {
+        anchor: "activity",
+        title: "左侧功能栏",
+        body: "在仪表盘、首次启动、任务、Agent、模型、记忆和设置之间切换。"
+      },
+      {
+        anchor: "dashboard",
+        title: "仪表盘",
+        body: "第一屏查看 Gateway 状态、任务健康度、当前模型和下一步动作。"
+      },
+      {
+        anchor: "setup",
+        title: "首次启动",
+        body: "配置 provider，回答工作访谈，生成个性化 OpenClaw agent 提示词。"
+      },
+      {
+        anchor: "jobs",
+        title: "任务和时间线",
+        body: "创建任务、选择编排模式、查看消息时间线，并在需要时取消运行。"
+      },
+      {
+        anchor: "settings",
+        title: "设置",
+        body: "左下角设置用于管理安全、语言和本地偏好。"
+      }
+    ],
+    navGroups: {
+      operate: "运行",
+      build: "构建",
+      system: "系统"
+    },
     statusFilters: {
       all: "全部",
       running: "运行中",
@@ -189,46 +367,7 @@ const translations = {
       artifact: "产物"
     }
   }
-} satisfies Record<
-  Language,
-  {
-    subtitle: string;
-    apiOnline: string;
-    apiOffline: string;
-    apiChecking: string;
-    refresh: string;
-    languageLabel: string;
-    setupTab: string;
-    consoleTab: string;
-    newJob: string;
-    routing: string;
-    budget: string;
-    startJob: string;
-    jobs: string;
-    jobStatusFilter: string;
-    jobTimeFilter: string;
-    searchPrompts: string;
-    searchPromptsAria: string;
-    since: string;
-    until: string;
-    noJobsMatch: string;
-    loadMore: string;
-    noJobSelected: string;
-    cancel: string;
-    cancelled: string;
-    status: string;
-    created: string;
-    timeline: string;
-    noJobLoaded: string;
-    latestItems: string;
-    complete: string;
-    noTimelineEvents: string;
-    statusFilters: Record<JobStatusFilter, string>;
-    timeFilters: Record<JobTimeFilter, string>;
-    statuses: Record<JobStatus, string>;
-    sources: Record<JobTimeline["timeline"][number]["source"], string>;
-  }
->;
+} as const;
 
 function getInitialLanguage(): Language {
   const queryLanguage = new URLSearchParams(window.location.search).get("lang");
@@ -237,6 +376,23 @@ function getInitialLanguage(): Language {
   }
   const storedLanguage = window.localStorage.getItem("agentOpenClaw.language");
   return storedLanguage === "zh" ? "zh" : "en";
+}
+
+function getInitialView(): AppView {
+  const storedView = window.localStorage.getItem("agentOpenClaw.activeView");
+  if (storedView === "console") return "jobs";
+  if (
+    storedView === "dashboard" ||
+    storedView === "setup" ||
+    storedView === "jobs" ||
+    storedView === "agents" ||
+    storedView === "models" ||
+    storedView === "memory" ||
+    storedView === "settings"
+  ) {
+    return storedView;
+  }
+  return "dashboard";
 }
 
 function formatTime(value: string | null | undefined, language: Language) {
@@ -270,11 +426,45 @@ function localDateTimeToIso(value: string) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+function loadSecurityRecord(): SecurityRecord | null {
+  const serialized = window.localStorage.getItem("agentOpenClaw.security");
+  if (!serialized) return null;
+  try {
+    const parsed = JSON.parse(serialized) as Partial<SecurityRecord>;
+    if (
+      parsed.passwordSalt &&
+      parsed.passwordHash &&
+      parsed.recoveryQuestion &&
+      parsed.recoverySalt &&
+      parsed.recoveryHash &&
+      parsed.updatedAt
+    ) {
+      return parsed as SecurityRecord;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function createSalt() {
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashSecret(secret: string, salt: string) {
+  const payload = `${salt}:${secret}`;
+  if (!window.crypto.subtle) {
+    return window.btoa(payload);
+  }
+  const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function App() {
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
-  const [activeView, setActiveView] = useState<AppView>(
-    () => (window.localStorage.getItem("agentOpenClaw.activeView") === "console" ? "console" : "setup")
-  );
+  const [activeView, setActiveView] = useState<AppView>(getInitialView);
   const [apiState, setApiState] = useState<ApiState>("checking");
   const [prompt, setPrompt] = useState("Draft a short launch note for a tiny multi-agent product.");
   const [routingMode, setRoutingMode] = useState<RoutingMode>("supervisor_pipeline");
@@ -291,6 +481,24 @@ function App() {
   const [timeline, setTimeline] = useState<JobTimeline | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTour, setShowTour] = useState(
+    () => window.localStorage.getItem("agentOpenClaw.tourCompleted") !== "true"
+  );
+  const [tourIndex, setTourIndex] = useState(0);
+  const [securityRecord, setSecurityRecord] = useState<SecurityRecord | null>(loadSecurityRecord);
+  const [locked, setLocked] = useState(() => Boolean(loadSecurityRecord()) && window.sessionStorage.getItem("agentOpenClaw.unlocked") !== "true");
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockRecoveryAnswer, setUnlockRecoveryAnswer] = useState("");
+  const [unlockMode, setUnlockMode] = useState<"password" | "recovery">("password");
+  const [unlockError, setUnlockError] = useState("");
+  const [passwordDraft, setPasswordDraft] = useState("");
+  const [confirmPasswordDraft, setConfirmPasswordDraft] = useState("");
+  const [recoveryQuestionDraft, setRecoveryQuestionDraft] = useState(
+    securityRecord?.recoveryQuestion || "What project should this panel protect?"
+  );
+  const [recoveryAnswerDraft, setRecoveryAnswerDraft] = useState("");
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [settingsError, setSettingsError] = useState("");
   const jobsRequestSeq = useRef(0);
   const copy = translations[language];
 
@@ -307,6 +515,18 @@ function App() {
 
   const activeStatusFilter = jobStatusFilters.find((filter) => filter.id === jobStatusFilter);
   const trimmedJobPromptFilter = jobPromptFilter.trim();
+  const runningJobCount = jobs.filter((job) => ["queued", "planning", "running", "testing", "fixing"].includes(job.status)).length;
+  const latestJob = jobs[0] ?? null;
+  const tourStep = copy.tourSteps[tourIndex];
+
+  const primaryNav = [
+    { id: "dashboard" as const, icon: Gauge, label: copy.dashboard, group: copy.navGroups.operate },
+    { id: "setup" as const, icon: Sparkles, label: copy.setupTab, group: copy.navGroups.operate },
+    { id: "jobs" as const, icon: MessageSquare, label: copy.jobsView, group: copy.navGroups.operate },
+    { id: "agents" as const, icon: Bot, label: copy.agentsView, group: copy.navGroups.build },
+    { id: "models" as const, icon: SlidersHorizontal, label: copy.modelsView, group: copy.navGroups.build },
+    { id: "memory" as const, icon: History, label: copy.memoryView, group: copy.navGroups.build }
+  ];
 
   useEffect(() => {
     window.localStorage.setItem("agentOpenClaw.language", language);
@@ -435,6 +655,7 @@ function App() {
         maxModelCalls
       });
       await refreshAll(created.jobId);
+      setActiveView("jobs");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -454,6 +675,93 @@ function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function unlockWithPassword(event: React.FormEvent) {
+    event.preventDefault();
+    if (!securityRecord) return;
+    const hash = await hashSecret(unlockPassword, securityRecord.passwordSalt);
+    if (hash !== securityRecord.passwordHash) {
+      setUnlockError(copy.unlockFailed);
+      return;
+    }
+    window.sessionStorage.setItem("agentOpenClaw.unlocked", "true");
+    setLocked(false);
+    setUnlockError("");
+  }
+
+  async function unlockWithRecovery(event: React.FormEvent) {
+    event.preventDefault();
+    if (!securityRecord) return;
+    const hash = await hashSecret(unlockRecoveryAnswer, securityRecord.recoverySalt);
+    if (hash !== securityRecord.recoveryHash) {
+      setUnlockError(copy.recoveryFailed);
+      return;
+    }
+    window.sessionStorage.setItem("agentOpenClaw.unlocked", "true");
+    setLocked(false);
+    setActiveView("settings");
+    setUnlockError("");
+  }
+
+  async function saveSecuritySettings(event: React.FormEvent) {
+    event.preventDefault();
+    setSettingsError("");
+    setSettingsMessage("");
+
+    if (passwordDraft || confirmPasswordDraft) {
+      if (passwordDraft !== confirmPasswordDraft) {
+        setSettingsError(copy.passwordMismatch);
+        return;
+      }
+    }
+
+    if (!securityRecord && (!passwordDraft || !recoveryAnswerDraft)) {
+      setSettingsError(copy.securityMissing);
+      return;
+    }
+
+    if (recoveryQuestionDraft.trim() && !securityRecord && !recoveryAnswerDraft) {
+      setSettingsError(copy.securityMissing);
+      return;
+    }
+
+    const passwordSalt = passwordDraft ? createSalt() : securityRecord?.passwordSalt;
+    const recoverySalt = recoveryAnswerDraft ? createSalt() : securityRecord?.recoverySalt;
+    if (!passwordSalt || !recoverySalt) {
+      setSettingsError(copy.securityMissing);
+      return;
+    }
+
+    const nextRecord: SecurityRecord = {
+      passwordSalt,
+      passwordHash: passwordDraft
+        ? await hashSecret(passwordDraft, passwordSalt)
+        : securityRecord?.passwordHash || "",
+      recoveryQuestion: recoveryQuestionDraft.trim() || securityRecord?.recoveryQuestion || copy.recoveryQuestion,
+      recoverySalt,
+      recoveryHash: recoveryAnswerDraft
+        ? await hashSecret(recoveryAnswerDraft, recoverySalt)
+        : securityRecord?.recoveryHash || "",
+      updatedAt: new Date().toISOString()
+    };
+
+    if (!nextRecord.passwordHash || !nextRecord.recoveryHash) {
+      setSettingsError(copy.securityMissing);
+      return;
+    }
+
+    window.localStorage.setItem("agentOpenClaw.security", JSON.stringify(nextRecord));
+    setSecurityRecord(nextRecord);
+    setPasswordDraft("");
+    setConfirmPasswordDraft("");
+    setRecoveryAnswerDraft("");
+    setSettingsMessage(copy.securitySaved);
+  }
+
+  function completeTour() {
+    window.localStorage.setItem("agentOpenClaw.tourCompleted", "true");
+    setShowTour(false);
   }
 
   useEffect(() => {
@@ -487,264 +795,652 @@ function App() {
     refreshAll("").catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
   }, [jobStatusFilter, jobTimeFilter, customSince, customUntil, trimmedJobPromptFilter, apiState]);
 
-  return (
-    <main className="shell">
-      <header className="topbar">
-        <div>
-          <h1>Agent OpenClaw</h1>
-          <p>{copy.subtitle}</p>
-        </div>
-        <div className="topbarActions">
-          <div className="viewToggle" role="tablist" aria-label="Desktop view">
-            <button
-              className={activeView === "setup" ? "viewButton active" : "viewButton"}
-              data-testid="setup-view-tab"
-              type="button"
-              role="tab"
-              aria-selected={activeView === "setup"}
-              onClick={() => setActiveView("setup")}
-            >
-              {copy.setupTab}
-            </button>
-            <button
-              className={activeView === "console" ? "viewButton active" : "viewButton"}
-              data-testid="console-view-tab"
-              type="button"
-              role="tab"
-              aria-selected={activeView === "console"}
-              onClick={() => setActiveView("console")}
-            >
-              {copy.consoleTab}
-            </button>
+  if (locked && securityRecord) {
+    return (
+      <main className="lockScreen">
+        <form className="lockPanel" onSubmit={unlockMode === "password" ? unlockWithPassword : unlockWithRecovery}>
+          <div className="lockMark">
+            <LockKeyhole size={32} aria-hidden="true" />
           </div>
-          <div className="languageToggle" role="group" aria-label={copy.languageLabel}>
-            {languageOptions.map((option) => (
-              <button
-                key={option.id}
-                className={option.id === language ? "languageButton active" : "languageButton"}
-                type="button"
-                onClick={() => setLanguage(option.id)}
-                aria-pressed={option.id === language}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <span className={`status ${apiState}`}>{statusText}</span>
+          <h1>{copy.lockTitle}</h1>
+          <p>{unlockMode === "password" ? copy.lockSubtitle : securityRecord.recoveryQuestion}</p>
+          {unlockMode === "password" ? (
+            <label>
+              {copy.password}
+              <input
+                type="password"
+                value={unlockPassword}
+                onChange={(event) => setUnlockPassword(event.target.value)}
+                autoFocus
+              />
+            </label>
+          ) : (
+            <label>
+              {copy.recoveryAnswer}
+              <input
+                type="password"
+                value={unlockRecoveryAnswer}
+                onChange={(event) => setUnlockRecoveryAnswer(event.target.value)}
+                autoFocus
+              />
+            </label>
+          )}
+          {unlockError ? <p className="error">{unlockError}</p> : null}
+          <button className="primaryButton" type="submit">
+            <KeyRound size={16} aria-hidden="true" />
+            {copy.unlock}
+          </button>
           <button
-            className="secondaryButton"
+            className="textButton"
             type="button"
-            onClick={() => refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))}
-            disabled={apiState !== "online" || busy}
+            onClick={() => {
+              setUnlockError("");
+              setUnlockMode(unlockMode === "password" ? "recovery" : "password");
+            }}
           >
+            {unlockMode === "password" ? copy.forgotPassword : copy.usePassword}
+          </button>
+        </form>
+      </main>
+    );
+  }
+
+  function renderDashboard() {
+    return (
+      <section className="deskPage dashboardPage" data-tour-anchor="dashboard">
+        <div className="pageHero">
+          <div>
+            <p className="eyebrow">
+              <span className={`miniDot ${apiState}`} />
+              {statusText}
+            </p>
+            <h1>{copy.dashboard}</h1>
+            <p>{copy.subtitle}</p>
+          </div>
+          <div className="heroActions">
+            <button className="primaryButton" type="button" onClick={() => setActiveView("setup")}>
+              <Sparkles size={16} aria-hidden="true" />
+              {copy.startSetup}
+            </button>
+            <button className="secondaryButton" type="button" onClick={() => setActiveView("jobs")}>
+              <TerminalSquare size={16} aria-hidden="true" />
+              {copy.openJobs}
+            </button>
+          </div>
+        </div>
+
+        <div className="overviewGrid">
+          <article className="metricPanel">
+            <span>{copy.gatewayPanel}</span>
+            <strong>{statusText}</strong>
+            <small>http://localhost:3000</small>
+          </article>
+          <article className="metricPanel">
+            <span>{copy.totalJobs}</span>
+            <strong>{jobs.length}</strong>
+            <small>{copy.jobs}</small>
+          </article>
+          <article className="metricPanel">
+            <span>{copy.runningJobs}</span>
+            <strong>{runningJobCount}</strong>
+            <small>{copy.statusFilters.running}</small>
+          </article>
+          <article className="metricPanel">
+            <span>{copy.currentModel}</span>
+            <strong>deepseek-v4-pro</strong>
+            <small>DeepSeek</small>
+          </article>
+        </div>
+
+        <div className="dashboardContent">
+          <section className="deskPanel">
+            <div className="panelHeader">
+              <h2>{copy.latestJob}</h2>
+              <button className="iconTextButton" type="button" onClick={() => setActiveView("jobs")}>
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
+            </div>
+            {latestJob ? (
+              <button className="latestJobButton" type="button" onClick={() => {
+                setSelectedJobId(latestJob.id);
+                setActiveView("jobs");
+              }}>
+                <span className={`dot ${statusTone(latestJob.status)}`} />
+                <span>
+                  <strong>{latestJob.id}</strong>
+                  <small>{latestJob.routingMode}</small>
+                </span>
+                <em>{copy.statuses[latestJob.status]}</em>
+              </button>
+            ) : (
+              <p className="emptyState">{copy.noLatestJob}</p>
+            )}
+          </section>
+
+          <section className="deskPanel">
+            <div className="panelHeader">
+              <h2>{copy.gatewayPanel}</h2>
+              <RefreshCw size={16} aria-hidden="true" />
+            </div>
+            <div className="systemRows">
+              <div>
+                <span>{copy.gatewayHint}</span>
+                <strong>localhost:3000</strong>
+              </div>
+              <div>
+                <span>{copy.modelHint}</span>
+                <strong>{routingMode}</strong>
+              </div>
+              <div>
+                <span>{copy.agentHint}</span>
+                <strong>main / research / writer / image / test</strong>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
+  function renderJobs() {
+    return (
+      <section className="deskPage jobsPage" data-tour-anchor="jobs">
+        <section className="composerBand">
+          <form
+            className="composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitJob();
+            }}
+          >
+            <div className="panelHeader">
+              <h1>{copy.newJob}</h1>
+              <span className={`status ${apiState}`}>{statusText}</span>
+            </div>
+            <textarea id="prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
+            <div className="composerControls">
+              <label htmlFor="routingMode">{copy.routing}</label>
+              <select
+                id="routingMode"
+                value={routingMode}
+                onChange={(event) => setRoutingMode(event.target.value as RoutingMode)}
+              >
+                {routingModes.map((mode) => (
+                  <option value={mode} key={mode}>
+                    {mode}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="maxModelCalls">{copy.budget}</label>
+              <input
+                id="maxModelCalls"
+                type="number"
+                min="1"
+                max="100"
+                value={maxModelCalls}
+                onChange={(event) => setMaxModelCalls(Number(event.target.value))}
+              />
+              <button data-testid="start-job-button" className="primaryButton" type="submit" disabled={apiState !== "online" || busy || !prompt.trim()}>
+                <Play size={16} aria-hidden="true" />
+                {copy.startJob}
+              </button>
+            </div>
+            {error ? <p className="error">{error}</p> : null}
+          </form>
+        </section>
+
+        <section className="jobWorkspace">
+          <aside className="jobList">
+            <div className="sectionHeader">
+              <h2>{copy.jobs}</h2>
+              <span>{jobListPage?.hasMore ? `${jobs.length}+` : jobs.length}</span>
+            </div>
+            <div className="jobFilters">
+              <div className="filterSegments" aria-label={copy.jobStatusFilter}>
+                {jobStatusFilters.map((filter) => (
+                  <button
+                    key={filter.id}
+                    className={filter.id === jobStatusFilter ? "filterSegment active" : "filterSegment"}
+                    data-filter={filter.id}
+                    type="button"
+                    onClick={() => setJobStatusFilter(filter.id)}
+                  >
+                    {copy.statusFilters[filter.id]}
+                  </button>
+                ))}
+              </div>
+              <label className="searchField">
+                <Search size={15} aria-hidden="true" />
+                <input
+                  id="jobSearch"
+                  type="search"
+                  aria-label={copy.searchPromptsAria}
+                  placeholder={copy.searchPrompts}
+                  value={jobPromptFilter}
+                  onChange={(event) => setJobPromptFilter(event.target.value)}
+                />
+              </label>
+              <div className="filterSegments timeFilterSegments" aria-label={copy.jobTimeFilter}>
+                {jobTimeFilters.map((filter) => (
+                  <button
+                    key={filter.id}
+                    className={filter.id === jobTimeFilter ? "filterSegment active" : "filterSegment"}
+                    data-time-filter={filter.id}
+                    type="button"
+                    onClick={() => setJobTimeFilter(filter.id)}
+                  >
+                    {copy.timeFilters[filter.id]}
+                  </button>
+                ))}
+              </div>
+              {jobTimeFilter === "custom" ? (
+                <div className="customTimeFilters">
+                  <label htmlFor="jobSince">{copy.since}</label>
+                  <input
+                    id="jobSince"
+                    type="datetime-local"
+                    value={customSince}
+                    onChange={(event) => {
+                      setJobTimeFilter("custom");
+                      setCustomSince(event.target.value);
+                    }}
+                  />
+                  <label htmlFor="jobUntil">{copy.until}</label>
+                  <input
+                    id="jobUntil"
+                    type="datetime-local"
+                    value={customUntil}
+                    onChange={(event) => {
+                      setJobTimeFilter("custom");
+                      setCustomUntil(event.target.value);
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <ol>
+              {jobs.map((job) => (
+                <li key={job.id}>
+                  <button
+                    className={job.id === selectedJobId ? "jobRow selected" : "jobRow"}
+                    type="button"
+                    onClick={() => setSelectedJobId(job.id)}
+                  >
+                    <span className={`dot ${statusTone(job.status)}`} />
+                    <span className="jobMeta">
+                      <strong>{job.id}</strong>
+                      <span>{job.routingMode}</span>
+                    </span>
+                    <span className="jobStatus">{copy.statuses[job.status]}</span>
+                    <span className="jobTime">{formatTime(job.createdAt, language)}</span>
+                  </button>
+                </li>
+              ))}
+              {jobs.length === 0 ? <li className="emptyState">{copy.noJobsMatch}</li> : null}
+            </ol>
+            {jobListPage?.hasMore ? (
+              <div className="loadMoreRow">
+                <button className="secondaryButton" type="button" onClick={loadMoreJobs} disabled={busy}>
+                  {copy.loadMore}
+                </button>
+              </div>
+            ) : null}
+          </aside>
+
+          <section className="jobDetail">
+            <div className="sectionHeader detailHeader">
+              <div>
+                <h2>{selectedFromList?.id ?? copy.noJobSelected}</h2>
+                <p>{selectedFromList ? `${selectedFromList.ingressOrigin} / ${selectedFromList.routingMode}` : "-"}</p>
+              </div>
+              <button
+                className="dangerButton"
+                type="button"
+                onClick={cancelSelectedJob}
+                disabled={!isCancellable(selectedFromList) || busy}
+              >
+                {selectedFromList?.status === "cancelled" ? copy.cancelled : copy.cancel}
+              </button>
+            </div>
+
+            {selectedFromList ? (
+              <dl className="stats">
+                <div>
+                  <dt>{copy.status}</dt>
+                  <dd>{copy.statuses[selectedFromList.status]}</dd>
+                </div>
+                <div>
+                  <dt>{copy.created}</dt>
+                  <dd>{formatTime(selectedFromList.createdAt, language)}</dd>
+                </div>
+                <div>
+                  <dt>{copy.budget}</dt>
+                  <dd>{selectedFromList.maxModelCalls}</dd>
+                </div>
+                <div>
+                  <dt>{copy.timeline}</dt>
+                  <dd>{timeline?.summary.totalTimelineItems ?? 0}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="emptyState">{copy.noJobLoaded}</p>
+            )}
+
+            <div className="timelineHeader">
+              <h3>{copy.timeline}</h3>
+              <span>{timeline?.summary.truncated ? copy.latestItems : copy.complete}</span>
+            </div>
+            <ol className="timeline">
+              {timeline?.timeline.length ? (
+                timeline.timeline.map((item) => (
+                  <li key={item.id} className="timelineItem">
+                    <time>{formatTime(item.at, language)}</time>
+                    <span className={`source source-${item.source}`}>{copy.sources[item.source]}</span>
+                    <div>
+                      <strong>{compactEventType(item.eventType)}</strong>
+                      <p>{item.title}</p>
+                      {item.actor ? <small>{item.actor}</small> : null}
+                    </div>
+                  </li>
+                ))
+              ) : (
+                <li className="emptyState">{copy.noTimelineEvents}</li>
+              )}
+            </ol>
+          </section>
+        </section>
+      </section>
+    );
+  }
+
+  function renderAgents() {
+    const agents = ["main-agent", "research-agent", "writer-agent", "image-agent", "test-agent"];
+    return (
+      <section className="deskPage utilityPage">
+        <div className="pageHero compactHero">
+          <div>
+            <p className="eyebrow">{copy.agentHint}</p>
+            <h1>{copy.agentsView}</h1>
+          </div>
+        </div>
+        <div className="agentGrid">
+          {agents.map((agent) => (
+            <article className="deskPanel agentPanel" key={agent}>
+              <Bot size={20} aria-hidden="true" />
+              <h2>{agent}</h2>
+              <p>{agent === "main-agent" ? "routing / planning / synthesis" : "specialized stage work"}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderModels() {
+    return (
+      <section className="deskPage utilityPage">
+        <div className="pageHero compactHero">
+          <div>
+            <p className="eyebrow">{copy.gatewayPanel}</p>
+            <h1>{copy.modelsView}</h1>
+          </div>
+        </div>
+        <div className="settingsGrid">
+          <section className="deskPanel">
+            <h2>{copy.currentModel}</h2>
+            <div className="systemRows">
+              <div>
+                <span>Provider</span>
+                <strong>DeepSeek</strong>
+              </div>
+              <div>
+                <span>Model</span>
+                <strong>deepseek-v4-pro</strong>
+              </div>
+              <div>
+                <span>{copy.routing}</span>
+                <strong>{routingMode}</strong>
+              </div>
+            </div>
+          </section>
+          <section className="deskPanel">
+            <h2>{copy.routing}</h2>
+            <div className="routingList">
+              {routingModes.map((mode) => (
+                <button
+                  key={mode}
+                  className={mode === routingMode ? "routingOption selected" : "routingOption"}
+                  type="button"
+                  onClick={() => setRoutingMode(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
+  function renderMemory() {
+    return (
+      <section className="deskPage utilityPage">
+        <div className="pageHero compactHero">
+          <div>
+            <p className="eyebrow">{copy.memoryHint}</p>
+            <h1>{copy.memoryView}</h1>
+          </div>
+        </div>
+        <div className="settingsGrid">
+          <section className="deskPanel">
+            <h2>Prompt library</h2>
+            <div className="systemRows">
+              <div>
+                <span>First Run bundle</span>
+                <strong>desktop-first-run</strong>
+              </div>
+              <div>
+                <span>Agent prompts</span>
+                <strong>main / research / writer / image / test</strong>
+              </div>
+            </div>
+          </section>
+          <section className="deskPanel">
+            <h2>Experience memory</h2>
+            <p className="mutedText">Job history, artifacts, reviews, and final summaries will become reusable context after alpha.</p>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
+  function renderSettings() {
+    return (
+      <section className="deskPage utilityPage" data-tour-anchor="settings">
+        <div className="pageHero compactHero">
+          <div>
+            <p className="eyebrow">{copy.settingsHint}</p>
+            <h1>{copy.settingsView}</h1>
+          </div>
+        </div>
+        <div className="settingsGrid">
+          <form className="deskPanel securityPanel" onSubmit={saveSecuritySettings}>
+            <div className="panelHeader">
+              <h2>{copy.securityTitle}</h2>
+              {securityRecord ? <CheckCircle2 size={18} aria-hidden="true" /> : <AlertTriangle size={18} aria-hidden="true" />}
+            </div>
+            <p>{copy.securityIntro}</p>
+            <label>
+              {copy.password}
+              <input type="password" value={passwordDraft} onChange={(event) => setPasswordDraft(event.target.value)} />
+            </label>
+            <label>
+              {copy.confirmPassword}
+              <input type="password" value={confirmPasswordDraft} onChange={(event) => setConfirmPasswordDraft(event.target.value)} />
+            </label>
+            <label>
+              {copy.recoveryQuestion}
+              <input value={recoveryQuestionDraft} onChange={(event) => setRecoveryQuestionDraft(event.target.value)} />
+            </label>
+            <label>
+              {copy.recoveryAnswer}
+              <input type="password" value={recoveryAnswerDraft} onChange={(event) => setRecoveryAnswerDraft(event.target.value)} />
+            </label>
+            {settingsError ? <p className="error">{settingsError}</p> : null}
+            {settingsMessage ? <p className="successMessage">{settingsMessage}</p> : null}
+            <button className="primaryButton" type="submit">
+              <ShieldQuestion size={16} aria-hidden="true" />
+              {copy.saveSecurity}
+            </button>
+          </form>
+
+          <section className="deskPanel">
+            <div className="panelHeader">
+              <h2>{copy.languageLabel}</h2>
+              <Languages size={18} aria-hidden="true" />
+            </div>
+            <div className="languageToggle" role="group" aria-label={copy.languageLabel}>
+              {languageOptions.map((option) => (
+                <button
+                  key={option.id}
+                  className={option.id === language ? "languageButton active" : "languageButton"}
+                  type="button"
+                  onClick={() => setLanguage(option.id)}
+                  aria-pressed={option.id === language}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
+  function renderActiveView() {
+    if (activeView === "dashboard") return renderDashboard();
+    if (activeView === "setup") return <FirstRunPanel language={language} />;
+    if (activeView === "jobs") return renderJobs();
+    if (activeView === "agents") return renderAgents();
+    if (activeView === "models") return renderModels();
+    if (activeView === "memory") return renderMemory();
+    return renderSettings();
+  }
+
+  return (
+    <main className="shell darkShell">
+      <aside className="activityRail" data-tour-anchor="activity">
+        <div className="railBrand">
+          <Boxes size={24} aria-hidden="true" />
+        </div>
+        <nav aria-label="Primary">
+          {primaryNav.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                className={activeView === item.id ? "railButton active" : "railButton"}
+                data-testid={
+                  item.id === "setup" ? "setup-view-tab" : item.id === "jobs" ? "console-view-tab" : undefined
+                }
+                type="button"
+                title={item.label}
+                aria-label={item.label}
+                onClick={() => setActiveView(item.id)}
+              >
+                <Icon size={20} aria-hidden="true" />
+              </button>
+            );
+          })}
+        </nav>
+        <div className="railBottom">
+          <button className="railButton" type="button" title={copy.settingsView} aria-label={copy.settingsView} onClick={() => setActiveView("settings")}>
+            <Settings size={20} aria-hidden="true" />
+          </button>
+          <button className="railButton" type="button" title={copy.languageLabel} aria-label={copy.languageLabel} onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>
+            <Languages size={20} aria-hidden="true" />
+          </button>
+        </div>
+      </aside>
+
+      <aside className="sideBar">
+        <div className="sideHeader">
+          <strong>{copy.appName}</strong>
+          <small>{copy.subtitle}</small>
+        </div>
+        <nav className="sideNav" aria-label="Sections">
+          {[copy.navGroups.operate, copy.navGroups.build].map((group) => (
+            <div className="navGroup" key={group}>
+              <span>{group}</span>
+              {primaryNav.filter((item) => item.group === group).map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    className={activeView === item.id ? "navItem active" : "navItem"}
+                    data-testid={
+                      item.id === "setup" ? "setup-view-tab-secondary" : item.id === "jobs" ? "console-view-tab-secondary" : undefined
+                    }
+                    type="button"
+                    onClick={() => setActiveView(item.id)}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+        <div className="sideFooter">
+          <span className={`status ${apiState}`}>{statusText}</span>
+          <button className="secondaryButton compactButton" type="button" onClick={() => refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))} disabled={apiState !== "online" || busy}>
+            <RefreshCw size={15} aria-hidden="true" />
             {copy.refresh}
           </button>
         </div>
-      </header>
+      </aside>
 
-      {activeView === "setup" ? (
-        <FirstRunPanel language={language} />
-      ) : (
-        <>
-          <section className="composerBand">
-            <form
-              className="composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                submitJob();
-              }}
-            >
-          <label htmlFor="prompt">{copy.newJob}</label>
-          <textarea id="prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
-          <div className="composerControls">
-            <label htmlFor="routingMode">{copy.routing}</label>
-            <select
-              id="routingMode"
-              value={routingMode}
-              onChange={(event) => setRoutingMode(event.target.value as RoutingMode)}
-            >
-              {routingModes.map((mode) => (
-                <option value={mode} key={mode}>
-                  {mode}
-                </option>
-              ))}
-            </select>
-            <label htmlFor="maxModelCalls">{copy.budget}</label>
-            <input
-              id="maxModelCalls"
-              type="number"
-              min="1"
-              max="100"
-              value={maxModelCalls}
-              onChange={(event) => setMaxModelCalls(Number(event.target.value))}
-            />
-            <button data-testid="start-job-button" type="submit" disabled={apiState !== "online" || busy || !prompt.trim()}>
-              {copy.startJob}
+      <section className="workspace">{renderActiveView()}</section>
+
+      {showTour ? (
+        <div className="tourOverlay" data-anchor={tourStep.anchor satisfies TourAnchor}>
+          <div className="tourCard">
+            <button className="tourClose" type="button" aria-label={copy.tourSkip} onClick={completeTour}>
+              <X size={16} aria-hidden="true" />
             </button>
-          </div>
-          {error ? <p className="error">{error}</p> : null}
-            </form>
-          </section>
-
-          <section className="dashboard">
-            <aside className="jobList">
-          <div className="sectionHeader">
-            <h2>{copy.jobs}</h2>
-            <span>{jobListPage?.hasMore ? `${jobs.length}+` : jobs.length}</span>
-          </div>
-          <div className="jobFilters">
-            <div className="filterSegments" aria-label={copy.jobStatusFilter}>
-              {jobStatusFilters.map((filter) => (
-                <button
-                  key={filter.id}
-                  className={filter.id === jobStatusFilter ? "filterSegment active" : "filterSegment"}
-                  data-filter={filter.id}
-                  type="button"
-                  onClick={() => setJobStatusFilter(filter.id)}
-                >
-                  {copy.statusFilters[filter.id]}
-                </button>
-              ))}
-            </div>
-            <input
-              id="jobSearch"
-              type="search"
-              aria-label={copy.searchPromptsAria}
-              placeholder={copy.searchPrompts}
-              value={jobPromptFilter}
-              onChange={(event) => setJobPromptFilter(event.target.value)}
-            />
-            <div className="filterSegments timeFilterSegments" aria-label={copy.jobTimeFilter}>
-              {jobTimeFilters.map((filter) => (
-                <button
-                  key={filter.id}
-                  className={filter.id === jobTimeFilter ? "filterSegment active" : "filterSegment"}
-                  data-time-filter={filter.id}
-                  type="button"
-                  onClick={() => setJobTimeFilter(filter.id)}
-                >
-                  {copy.timeFilters[filter.id]}
-                </button>
-              ))}
-            </div>
-            {jobTimeFilter === "custom" ? (
-              <div className="customTimeFilters">
-                <label htmlFor="jobSince">{copy.since}</label>
-                <input
-                  id="jobSince"
-                  type="datetime-local"
-                  value={customSince}
-                  onChange={(event) => {
-                    setJobTimeFilter("custom");
-                    setCustomSince(event.target.value);
-                  }}
-                />
-                <label htmlFor="jobUntil">{copy.until}</label>
-                <input
-                  id="jobUntil"
-                  type="datetime-local"
-                  value={customUntil}
-                  onChange={(event) => {
-                    setJobTimeFilter("custom");
-                    setCustomUntil(event.target.value);
-                  }}
-                />
-              </div>
-            ) : null}
-          </div>
-          <ol>
-            {jobs.map((job) => (
-              <li key={job.id}>
-                <button
-                  className={job.id === selectedJobId ? "jobRow selected" : "jobRow"}
-                  type="button"
-                  onClick={() => setSelectedJobId(job.id)}
-                >
-                  <span className={`dot ${statusTone(job.status)}`} />
-                  <span className="jobMeta">
-                    <strong>{job.id}</strong>
-                    <span>{job.routingMode}</span>
-                  </span>
-                  <span className="jobStatus">{copy.statuses[job.status]}</span>
-                  <span className="jobTime">{formatTime(job.createdAt, language)}</span>
-                </button>
-              </li>
-            ))}
-            {jobs.length === 0 ? <li className="emptyState">{copy.noJobsMatch}</li> : null}
-          </ol>
-          {jobListPage?.hasMore ? (
-            <div className="loadMoreRow">
-              <button className="secondaryButton" type="button" onClick={loadMoreJobs} disabled={busy}>
-                {copy.loadMore}
+            <span>{copy.tourProgress} {tourIndex + 1} / {copy.tourSteps.length}</span>
+            <h2>{tourStep.title}</h2>
+            <p>{tourStep.body}</p>
+            <div className="tourActions">
+              <button className="textButton" type="button" onClick={completeTour}>
+                {copy.tourSkip}
+              </button>
+              <button
+                className="primaryButton"
+                type="button"
+                onClick={() => {
+                  if (tourIndex >= copy.tourSteps.length - 1) {
+                    completeTour();
+                    return;
+                  }
+                  const nextIndex = tourIndex + 1;
+                  setTourIndex(nextIndex);
+                  const nextAnchor = copy.tourSteps[nextIndex].anchor;
+                  if (nextAnchor === "setup") setActiveView("setup");
+                  if (nextAnchor === "jobs") setActiveView("jobs");
+                  if (nextAnchor === "settings") setActiveView("settings");
+                  if (nextAnchor === "dashboard" || nextAnchor === "activity") setActiveView("dashboard");
+                }}
+              >
+                {tourIndex >= copy.tourSteps.length - 1 ? copy.tourDone : copy.tourNext}
               </button>
             </div>
-          ) : null}
-            </aside>
-
-            <section className="jobDetail">
-          <div className="sectionHeader detailHeader">
-            <div>
-              <h2>{selectedFromList?.id ?? copy.noJobSelected}</h2>
-              <p>{selectedFromList ? `${selectedFromList.ingressOrigin} / ${selectedFromList.routingMode}` : "-"}</p>
-            </div>
-            <button
-              className="dangerButton"
-              type="button"
-              onClick={cancelSelectedJob}
-              disabled={!isCancellable(selectedFromList) || busy}
-            >
-              {selectedFromList?.status === "cancelled" ? copy.cancelled : copy.cancel}
-            </button>
           </div>
-
-          {selectedFromList ? (
-            <dl className="stats">
-              <div>
-                <dt>{copy.status}</dt>
-                <dd>{copy.statuses[selectedFromList.status]}</dd>
-              </div>
-              <div>
-                <dt>{copy.created}</dt>
-                <dd>{formatTime(selectedFromList.createdAt, language)}</dd>
-              </div>
-              <div>
-                <dt>{copy.budget}</dt>
-                <dd>{selectedFromList.maxModelCalls}</dd>
-              </div>
-              <div>
-                <dt>{copy.timeline}</dt>
-                <dd>{timeline?.summary.totalTimelineItems ?? 0}</dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="emptyState">{copy.noJobLoaded}</p>
-          )}
-
-          <div className="timelineHeader">
-            <h3>{copy.timeline}</h3>
-            <span>{timeline?.summary.truncated ? copy.latestItems : copy.complete}</span>
-          </div>
-          <ol className="timeline">
-            {timeline?.timeline.length ? (
-              timeline.timeline.map((item) => (
-                <li key={item.id} className="timelineItem">
-                  <time>{formatTime(item.at, language)}</time>
-                  <span className={`source source-${item.source}`}>{copy.sources[item.source]}</span>
-                  <div>
-                    <strong>{compactEventType(item.eventType)}</strong>
-                    <p>{item.title}</p>
-                    {item.actor ? <small>{item.actor}</small> : null}
-                  </div>
-                </li>
-              ))
-            ) : (
-              <li className="emptyState">{copy.noTimelineEvents}</li>
-            )}
-          </ol>
-            </section>
-          </section>
-        </>
-      )}
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -1,5 +1,79 @@
 # Agent OpenClaw Context Checkpoint
 
+## 2026-06-03 Dark Desktop Panel Sidebar And Guided Onboarding Checkpoint
+
+用户给出新的桌面 UI 方向：
+
+```text
+1. 界面参考第一张图：黑色桌面应用风格，功能栏在左侧，类似 VS Code 的深色工作台。
+2. 第一次打开应用时，要有演示/引导内容，介绍各区域和按钮功能，并支持“跳过 / 下一步”。
+3. 左下角是设置；设置里要有很多功能，包含管理密码、忘记密码密保问题，参考第二张 ClawPanel 登录图。
+4. 参考第三张 ClawPanel / Hermes 仪表盘截图，以及 qingchencloud/clawpanel 的 hermes-agent.md，但要结合 Agent OpenClaw 自主决定左侧功能栏。
+```
+
+本次参考吸收：
+
+```text
+1. 第一张图：深色背景、左侧活动栏、低干扰工具入口。
+2. 第二张图：设置/登录安全入口需要有管理密码和密保问题。
+3. 第三张图和 hermes-agent.md：ClawPanel / Hermes 的 Gateway、仪表盘、实时聊天、会话、日志、Skills、记忆文件、扩展主题等信息架构可借鉴。
+4. Agent OpenClaw 不照搬 ClawPanel；左侧功能按本项目拆成 Dashboard、First Run、Jobs、Agents、Models、Memory、Settings。
+```
+
+本次已改：
+
+```text
+apps/desktop-app/package.json / package-lock.json：
+  - 新增 lucide-react，用于桌面左栏和按钮图标。
+
+apps/desktop-app/src/main.tsx：
+  - 顶层 UI 改成黑色桌面工作台。
+  - 新增窄活动栏 + 二级左侧导航。
+  - 左侧功能包括：
+    Dashboard / 仪表盘
+    First Run / 首次启动
+    Jobs / 任务
+    Agents / Agent
+    Models / 模型
+    Memory / 记忆
+    Settings / 设置
+  - 新增首次打开 guided tour，本地 localStorage 记录是否完成；支持 Skip / Next / Done。
+  - 设置页新增本地安全设置：管理密码、确认密码、密保问题、密保答案。
+  - 安全设置使用 salt + SHA-256 hash 存 localStorage，不保存明文密码/答案。
+  - 若已设置本地密码，下次新 session 进入 lock screen；忘记密码可用密保问题解锁后进入设置。
+  - 保留原有 job 创建、routing mode、任务列表、搜索过滤、时间线、取消任务能力。
+  - 保留 smoke 兼容 data-testid：console-view-tab / start-job-button。
+
+apps/desktop-app/src/styles.css：
+  - 全面改为深色桌面控制台样式。
+  - 左侧栏、仪表盘、任务工作区、首次启动、设置、锁屏、tour overlay 均重写。
+```
+
+本次验证：
+
+```text
+npm run check                                      passed
+npm run check:no-secrets                          passed
+npm --prefix apps/desktop-app run build           passed
+npm run smoke:desktop-ui-prod -- --skip-api-start passed
+  jobId: JOB-20260603-9B980023
+  terminalStatus: cancelled
+  screenshot: .runtime/desktop-ui-smoke/desktop-ui-prod-smoke.png
+npm run smoke:tauri-shell                         passed
+git diff --check                                  only CRLF warnings
+```
+
+下一步顺序：
+
+```text
+1. 用户打开桌面应用，实际检查黑色左侧栏、首次引导、设置页密码/密保入口是否符合预期。
+2. 根据用户反馈微调左侧导航名称、顺序、图标和首次引导文案。
+3. 把“后端启动 / Docker / API 离线”状态放进桌面 UI 的 Dashboard 或设置里讲清楚，避免用户误解。
+4. 完善 Settings：后端地址、启动方式、provider key、本地安全策略、语言都集中到设置页。
+5. 做 First Run 到真实 OpenClaw agent 框架的“备份 + 写入”显式流程。
+6. 再做 alpha polish：图标、签名、release tag、公开 alpha 说明和 GitHub README。
+```
+
 ## 2026-06-02 Desktop App Entry Reinstated Checkpoint
 
 用户最新决定：
