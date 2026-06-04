@@ -8,11 +8,12 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $dockerCli = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
 $dockerDesktop = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-$desktopExe = Join-Path $root "apps\desktop-app\src-tauri\target\release\agent-openclaw.exe"
+$desktopExe = Join-Path $root "apps\desktop-app\src-tauri\target\release\honeycomb.exe"
 $logPath = Join-Path $root "logs\desktop-launcher.log"
 $dockerProbeTimeoutSeconds = 10
 $dockerCommandTimeoutSeconds = 90
 $apiHealthUrl = "http://localhost:3000/health"
+$desktopLaunched = $false
 
 Set-Location $root
 New-Item -ItemType Directory -Force -Path "logs", ".runtime" | Out-Null
@@ -162,11 +163,25 @@ function Test-HttpReady($Url) {
 try {
   Write-LaunchLog "Launcher started"
 
-  $mutex = [System.Threading.Mutex]::new($false, "Global\AgentOpenClawDesktopLauncher")
+  $mutex = [System.Threading.Mutex]::new($false, "Global\HoneycombDesktopLauncher")
   $lockTaken = $mutex.WaitOne(0)
   if (-not $lockTaken) {
     Write-LaunchLog "Another launcher instance is already running; exiting"
     exit 0
+  }
+
+  if (-not (Test-Path -LiteralPath $desktopExe)) {
+    Write-LaunchLog "Desktop exe missing; building release app without bundle"
+    npm --prefix apps/desktop-app exec tauri build -- --no-bundle *> (Join-Path $root "logs\desktop-launcher-build.log")
+    if ($LASTEXITCODE -ne 0) {
+      throw "Tauri no-bundle build failed"
+    }
+  }
+
+  if (-not $NoLaunch) {
+    Write-LaunchLog "Launching desktop app before backend startup"
+    Start-Process -FilePath $desktopExe -WorkingDirectory (Split-Path -Parent $desktopExe)
+    $desktopLaunched = $true
   }
 
   if (-not (Test-Path -LiteralPath $dockerCli)) {
@@ -204,23 +219,12 @@ try {
     throw "API did not become ready within $TimeoutSeconds seconds"
   }
 
-  if (-not (Test-Path -LiteralPath $desktopExe)) {
-    Write-LaunchLog "Desktop exe missing; building release app without bundle"
-    npm --prefix apps/desktop-app exec tauri build -- --no-bundle *> (Join-Path $root "logs\desktop-launcher-build.log")
-    if ($LASTEXITCODE -ne 0) {
-      throw "Tauri no-bundle build failed"
-    }
-  }
-
-  if (-not $NoLaunch) {
-    Write-LaunchLog "Launching desktop app"
-    Start-Process -FilePath $desktopExe -WorkingDirectory (Split-Path -Parent $desktopExe)
-  }
-
   Write-LaunchLog "Launcher completed"
 } catch {
   Write-LaunchLog "Launcher failed: $($_.Exception.Message)"
-  throw
+  if (-not $desktopLaunched) {
+    throw
+  }
 } finally {
   if ($lockTaken) {
     $mutex.ReleaseMutex()

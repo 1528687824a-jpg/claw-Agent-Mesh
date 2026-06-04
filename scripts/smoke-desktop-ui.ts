@@ -13,9 +13,10 @@ const runtimeDir = path.join(root, ".runtime", "desktop-ui-smoke");
 const apiUrl = "http://localhost:3000";
 const mode = process.argv.includes("--prod") ? "prod" : "dev";
 const skipApiStart = process.argv.includes("--skip-api-start");
+const onboardingMode = process.argv.includes("--onboarding");
 const uiPort = Number(process.env.DESKTOP_UI_SMOKE_PORT ?? (mode === "prod" ? 5174 : 5173));
 const uiUrl = `http://127.0.0.1:${uiPort}`;
-const screenshotPath = path.join(runtimeDir, `desktop-ui-${mode}-smoke.png`);
+const screenshotPath = path.join(runtimeDir, `desktop-ui-${onboardingMode ? "onboarding-" : ""}${mode}-smoke.png`);
 
 type CdpResponse = {
   id?: number;
@@ -590,6 +591,131 @@ async function runUiFlow(page: CdpClient) {
   };
 }
 
+async function runOnboardingFlow(page: CdpClient) {
+  const expression = String.raw`
+    (async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const waitFor = async (fn, message, timeoutMs = 15000) => {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < timeoutMs) {
+          const value = fn();
+          if (value) return value;
+          await sleep(100);
+        }
+        throw new Error(message);
+      };
+      const setNativeValue = (element, value) => {
+        const prototype = Object.getPrototypeOf(element);
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+        descriptor.set.call(element, value);
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
+      localStorage.clear();
+      sessionStorage.clear();
+      location.search = "?lang=zh";
+      await new Promise(() => {});
+    })()
+  `;
+
+  await page.send("Runtime.evaluate", { expression, awaitPromise: false });
+  await page.send("Page.loadEventFired", {}, 10_000).catch(() => undefined);
+
+  const flowExpression = String.raw`
+    (async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const waitFor = async (fn, message, timeoutMs = 20000) => {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < timeoutMs) {
+          const value = fn();
+          if (value) return value;
+          await sleep(100);
+        }
+        throw new Error(message);
+      };
+      const setNativeValue = (element, value) => {
+        const prototype = Object.getPrototypeOf(element);
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+        descriptor.set.call(element, value);
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
+      const closeTour = await waitFor(() => document.querySelector(".tourClose"), "tour close button missing");
+      closeTour.click();
+      await waitFor(() => document.querySelector(".providerFocus"), "provider setup did not appear");
+
+      const navLocked = !document.querySelector('[data-testid="console-view-tab"]');
+      const apiKey = document.querySelector('.providerFocus input[type="password"]');
+      setNativeValue(apiKey, "smoke-private-key");
+      document.querySelector(".providerFocus .setupPrimary").click();
+
+      await waitFor(() => document.querySelector(".interviewStage"), "interview did not appear");
+      const firstQuestion = document.querySelector(".questionCard input");
+      setNativeValue(firstQuestion, "科技领域");
+      document.querySelector(".questionCard .setupPrimary").click();
+
+      await waitFor(() => document.body.textContent.includes("Agent 正在思考中"), "first thinking state missing");
+      await waitFor(() => document.querySelector(".questionCard input")?.placeholder.includes("产品经理"), "tailored role placeholder missing");
+      const role = document.querySelector(".questionCard input");
+      const tailoredPlaceholder = role.placeholder;
+      setNativeValue(role, "产品经理");
+      document.querySelector(".questionCard .setupPrimary").click();
+
+      await waitFor(() => document.body.textContent.includes("Agent 正在思考中"), "second thinking state missing");
+      await waitFor(() => document.querySelectorAll(".workOption").length >= 4, "generated work options missing");
+      document.querySelector(".workOption").click();
+      await sleep(80);
+      document.querySelector(".questionCard .setupPrimary").click();
+
+      const quality = await waitFor(() => document.querySelector(".questionCard textarea"), "quality question missing");
+      setNativeValue(quality, "准确、简洁、可以直接交付");
+      document.querySelector(".questionCard .setupPrimary").click();
+
+      await waitFor(() => document.querySelector(".reviewStage"), "review stage missing");
+      const generatedAgentCount = document.querySelectorAll(".agentReviewGrid article").length;
+      document.querySelector(".reviewStage .setupPrimary").click();
+      await waitFor(() => document.querySelector(".dashboardPage"), "dashboard did not appear after setup completion");
+
+      const consoleVisibleAfterComplete = Boolean(document.querySelector('[data-testid="console-view-tab"]'));
+      const toggle = document.querySelector('[data-testid="sidebar-toggle"]');
+      toggle.click();
+      await sleep(250);
+      const collapsed = document.querySelector(".darkShell").classList.contains("sideCollapsed");
+
+      return {
+        navLocked,
+        tailoredPlaceholder,
+        generatedAgentCount,
+        consoleVisibleAfterComplete,
+        collapsed,
+        setupCompleted: localStorage.getItem("honeycomb.setupCompleted") === "true",
+        language: localStorage.getItem("agentOpenClaw.language")
+      };
+    })()
+  `;
+
+  const result = await page.send("Runtime.evaluate", {
+    expression: flowExpression,
+    awaitPromise: true,
+    returnByValue: true
+  }, 90_000);
+
+  if (result.exceptionDetails) {
+    throw new Error(result.exceptionDetails.text ?? "Onboarding UI flow failed");
+  }
+  return result.result.value as {
+    navLocked: boolean;
+    tailoredPlaceholder: string;
+    generatedAgentCount: number;
+    consoleVisibleAfterComplete: boolean;
+    collapsed: boolean;
+    setupCompleted: boolean;
+    language: string;
+  };
+}
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeout: NodeJS.Timeout | undefined;
   try {
@@ -607,7 +733,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
 }
 
 async function main() {
-  logStep(`mode=${mode}; skipApiStart=${skipApiStart}; uiUrl=${uiUrl}`);
+  logStep(`mode=${mode}; skipApiStart=${skipApiStart}; onboardingMode=${onboardingMode}; uiUrl=${uiUrl}`);
   await mkdir(runtimeDir, { recursive: true });
   await rm(screenshotPath, { force: true });
   const smokeLock = skipApiStart ? null : await acquireSmokeLock("dev-stack");
@@ -630,7 +756,9 @@ async function main() {
       logStep("desktop production bundle built");
     }
 
-    if (skipApiStart) {
+    if (onboardingMode) {
+      logStep("onboarding mode does not require backend API");
+    } else if (skipApiStart) {
       logStep("waiting for existing API health");
       await waitForHttp(`${apiUrl}/health`, 60_000);
     } else {
@@ -707,10 +835,42 @@ async function main() {
     const page = await openPage(browserPort, uiUrl);
     try {
       logStep("running browser UI flow");
-      const flow = await withTimeout(runUiFlow(page), 120_000, "desktop UI browser flow");
+      const flow = onboardingMode
+        ? await withTimeout(runOnboardingFlow(page), 90_000, "desktop onboarding browser flow")
+        : await withTimeout(runUiFlow(page), 120_000, "desktop UI browser flow");
       const screenshot = await page.send("Page.captureScreenshot", { format: "png" });
       await writeFile(screenshotPath, Buffer.from(screenshot.data, "base64"));
 
+      if (onboardingMode) {
+        console.log(
+          JSON.stringify(
+            {
+              ok: true,
+              mode,
+              onboardingMode,
+              url: uiUrl,
+              ...flow,
+              screenshotPath,
+              checked: [
+                "animated_tour_to_first_run",
+                "navigation_locked_before_setup",
+                "provider_only_stage",
+                "thinking_state",
+                "tailored_role_placeholder",
+                "generated_work_options",
+                "agent_profile_review",
+                "navigation_unlocked_after_setup",
+                "sidebar_collapse"
+              ]
+            },
+            null,
+            2
+          )
+        );
+        return;
+      }
+
+      const jobFlow = flow as Awaited<ReturnType<typeof runUiFlow>>;
       console.log(
         JSON.stringify(
           {
@@ -718,23 +878,23 @@ async function main() {
             mode,
             skipApiStart,
             url: uiUrl,
-            jobId: flow.jobId,
-            terminalStatus: flow.terminalStatus,
-            cancelAttempted: flow.cancelAttempted,
-            statusVisible: flow.statusVisible,
-            filteredJobVisible: flow.filteredJobVisible,
-            filteredStatuses: flow.filteredStatuses,
-            timeFilterVisible: flow.timeFilterVisible,
-            customSinceVisible: flow.customSinceVisible,
-            timelineCursorRequests: flow.timelineCursorRequests,
-            timelineItems: flow.timelineItems,
+            jobId: jobFlow.jobId,
+            terminalStatus: jobFlow.terminalStatus,
+            cancelAttempted: jobFlow.cancelAttempted,
+            statusVisible: jobFlow.statusVisible,
+            filteredJobVisible: jobFlow.filteredJobVisible,
+            filteredStatuses: jobFlow.filteredStatuses,
+            timeFilterVisible: jobFlow.timeFilterVisible,
+            customSinceVisible: jobFlow.customSinceVisible,
+            timelineCursorRequests: jobFlow.timelineCursorRequests,
+            timelineItems: jobFlow.timelineItems,
             screenshotPath,
             checked: [
               "desktop_ui_load",
               mode === "prod" ? "prod_bundle_served" : "vite_dev_server",
               "create_job_from_ui",
               "job_list_selection",
-              flow.cancelAttempted ? "cancel_job_from_ui" : "skip_cancel_already_terminal",
+              jobFlow.cancelAttempted ? "cancel_job_from_ui" : "skip_cancel_already_terminal",
               "job_terminal_status_visible",
               "job_filter_search_visible",
               "job_filter_time_window_visible",

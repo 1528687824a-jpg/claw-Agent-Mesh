@@ -1,5 +1,5 @@
 param(
-  [string]$ShortcutName = "Agent OpenClaw"
+  [string]$ShortcutName = "honeycomb"
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,7 +19,7 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = "wscript.exe"
 $shortcut.Arguments = "`"$launcherScript`""
 $shortcut.WorkingDirectory = $root
-$shortcut.Description = "Launch Agent OpenClaw desktop app"
+$shortcut.Description = "Launch honeycomb desktop app"
 if (Test-Path -LiteralPath $iconPath) {
   $shortcut.IconLocation = $iconPath
 }

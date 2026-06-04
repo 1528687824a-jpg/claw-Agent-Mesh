@@ -1,6 +1,6 @@
-# Agent OpenClaw Desktop Shell
+# honeycomb Desktop Shell
 
-This is the first Tauri delivery shell for Agent OpenClaw.
+This is the Tauri desktop control surface for honeycomb.
 
 The v1 desktop app expects the backend stack to be running locally through
 Docker Compose or the development scripts, then talks to `http://localhost:3000`.

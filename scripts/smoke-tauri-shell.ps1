@@ -157,7 +157,7 @@ if ($packageJson.scripts."tauri:build" -ne "tauri build") {
   throw "tauri:build script missing"
 }
 
-if ($tauriConfig.productName -ne "Agent OpenClaw") {
+if ($tauriConfig.productName -ne "honeycomb") {
   throw "Unexpected Tauri productName"
 }
 
@@ -185,7 +185,7 @@ if (-not $viteConfig.Contains('strictPort: true')) {
   throw "Vite strictPort must stay enabled"
 }
 
-if (-not $cargoManifest.Contains('name = "agent-openclaw"')) {
+if (-not $cargoManifest.Contains('name = "honeycomb"')) {
   throw "Unexpected Cargo package name"
 }
 

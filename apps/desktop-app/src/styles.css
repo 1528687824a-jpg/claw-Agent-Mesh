@@ -71,6 +71,18 @@ select {
   grid-template-columns: 46px 210px minmax(0, 1fr);
   background: #0f1115;
   color: #d7dde7;
+  transition: grid-template-columns 180ms ease;
+}
+
+.darkShell.sideCollapsed {
+  grid-template-columns: 46px 0 minmax(0, 1fr);
+}
+
+.darkShell.sideCollapsed .sideBar {
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-right: 0;
 }
 
 .activityRail {
@@ -84,7 +96,43 @@ select {
 .railBrand {
   display: grid;
   place-items: center;
-  color: #76d0ff;
+}
+
+.honeycombLogo {
+  position: relative;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.honeycombLogo svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.logoCell {
+  fill: none;
+  stroke: #f5b942;
+  stroke-width: 8;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.logoCore {
+  fill: #f7f1df;
+}
+
+.honeycombLogo-talking {
+  animation: logoTalk 1.8s ease-in-out infinite;
+}
+
+.honeycombLogo-thinking svg {
+  animation: logoThink 1.15s linear infinite;
+}
+
+.honeycombLogo-thinking .logoCore {
+  animation: logoCoreThink 900ms ease-in-out infinite;
 }
 
 .activityRail nav,
@@ -128,11 +176,21 @@ select {
   grid-template-rows: auto 1fr auto;
   border-right: 1px solid #252a32;
   background: #171a20;
+  opacity: 1;
+  transition: opacity 140ms ease;
 }
 
 .sideHeader {
   padding: 18px 16px 14px;
   border-bottom: 1px solid #252a32;
+}
+
+.sideHeader > div {
+  min-width: 0;
+}
+
+.sideHeader strong {
+  text-transform: lowercase;
 }
 
 .sideHeader strong {
@@ -270,9 +328,14 @@ select {
 }
 
 .primaryButton {
-  border-color: #3a6f91;
-  background: #2a5f7f;
-  color: #ffffff;
+  border-color: #c78b23;
+  background: #b87b14;
+  color: #111318;
+}
+
+.primaryButton:hover:not(:disabled) {
+  border-color: #f5b942;
+  background: #d99a2d;
 }
 
 .secondaryButton {
@@ -930,11 +993,28 @@ select {
 }
 
 .agentPanel svg {
-  color: #76d0ff;
+  color: #f5b942;
 }
 
 .agentPanel h2 {
   margin-bottom: 0;
+}
+
+.agentPanel small {
+  display: block;
+  margin-top: 4px;
+  color: #788495;
+  font-size: 11px;
+}
+
+.agentModelTag {
+  width: fit-content;
+  padding: 4px 7px;
+  border: 1px solid #514425;
+  border-radius: 4px;
+  background: #201b11;
+  color: #e7bf6d;
+  font-size: 11px;
 }
 
 .routingList {
@@ -943,13 +1023,100 @@ select {
 }
 
 .routingOption {
+  display: grid;
+  gap: 4px;
   justify-content: flex-start;
   text-align: left;
 }
 
+.routingOption span {
+  color: #e7ebf2;
+}
+
+.routingOption small {
+  color: #778394;
+  font-size: 10px;
+}
+
 .routingOption.selected {
-  border-color: #76d0ff;
-  background: #203142;
+  border-color: #d39a33;
+  background: #292316;
+}
+
+.modelLayout {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.7fr) minmax(420px, 1.3fr);
+  gap: 14px;
+}
+
+.modelRoleList {
+  display: grid;
+  gap: 1px;
+  border: 1px solid #252a32;
+  background: #252a32;
+}
+
+.modelRoleList article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  background: #11151c;
+}
+
+.modelRoleList article div {
+  min-width: 0;
+}
+
+.modelRoleList span,
+.modelRoleList strong {
+  display: block;
+}
+
+.modelRoleList span {
+  margin-bottom: 4px;
+  color: #8c97a7;
+  font-size: 11px;
+}
+
+.modelRoleList strong {
+  color: #eef1f5;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.modelRoleList code {
+  padding: 5px 7px;
+  border: 1px solid #514425;
+  border-radius: 4px;
+  background: #201b11;
+  color: #e7bf6d;
+  font-size: 11px;
+}
+
+.memoryStates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  border: 1px solid #252a32;
+  background: #252a32;
+}
+
+.memoryStates span {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  background: #11151c;
+  color: #8c97a7;
+  font-size: 11px;
+}
+
+.memoryStates strong {
+  color: #ffffff;
+  font-size: 18px;
 }
 
 .languageToggle {
@@ -1056,7 +1223,7 @@ select {
   background: #171c24;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
   pointer-events: auto;
-  animation: tourPulse 1.8s ease-in-out infinite;
+  animation: tourArrive 300ms ease-out both, tourFloat 3.6s ease-in-out 320ms infinite;
 }
 
 .tourOverlay[data-anchor="activity"] .tourCard {
@@ -1099,6 +1266,12 @@ select {
   font-size: 12px;
 }
 
+.tourMark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .tourCard h2 {
   margin: 8px 30px 8px 0;
   color: #ffffff;
@@ -1128,7 +1301,355 @@ select {
   }
 }
 
-@media (max-width: 980px) {
+@keyframes logoTalk {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-2px) scale(1.035);
+  }
+}
+
+@keyframes logoThink {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes logoCoreThink {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes tourArrive {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes tourFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+    border-color: #405168;
+  }
+
+  50% {
+    transform: translateY(-4px);
+    border-color: #d39a33;
+  }
+}
+
+.focusSetup {
+  display: grid;
+  place-items: center;
+  padding: 34px;
+  background: #0f1115;
+}
+
+.setupFocusCard,
+.interviewStage,
+.reviewStage {
+  width: min(720px, 100%);
+  box-sizing: border-box;
+  border: 1px solid #2d333d;
+  border-radius: 7px;
+  background: #151922;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+}
+
+.setupFocusCard {
+  display: grid;
+  gap: 18px;
+  padding: 32px;
+  animation: focusArrive 420ms ease-out both;
+}
+
+.setupFocusCard.leaving {
+  animation: providerLeave 560ms ease-in forwards;
+}
+
+.setupLogoWrap {
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #514425;
+  border-radius: 7px;
+  background: #201b11;
+}
+
+.setupFocusCard h1,
+.interviewStage h1,
+.thinkingStage h1,
+.reviewStage h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 27px;
+  line-height: 1.16;
+}
+
+.setupLead {
+  max-width: 620px;
+  margin: -8px 0 2px;
+  color: #98a3b3;
+  line-height: 1.6;
+}
+
+.providerFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.setupPrimary {
+  min-height: 42px;
+  justify-self: end;
+  padding-inline: 18px;
+}
+
+.thinkingStage {
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+  color: #ffffff;
+  animation: focusArrive 280ms ease-out both;
+}
+
+.thinkingDots {
+  display: flex;
+  gap: 7px;
+}
+
+.thinkingDots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #f5b942;
+  animation: thinkingDot 900ms ease-in-out infinite;
+}
+
+.thinkingDots i:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+.thinkingDots i:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+.interviewStage,
+.reviewStage {
+  padding: 28px;
+  animation: focusArrive 360ms ease-out both;
+}
+
+.interviewHeader,
+.reviewHeading {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.interviewHeader p,
+.reviewHeading p {
+  margin: 5px 0 0;
+  color: #98a3b3;
+  line-height: 1.5;
+}
+
+.questionProgress {
+  display: grid;
+  gap: 7px;
+  margin: 26px 0 14px;
+}
+
+.questionProgress > span {
+  color: #8c97a7;
+  font-size: 11px;
+}
+
+.questionProgress > div {
+  height: 3px;
+  background: #272d36;
+}
+
+.questionProgress i {
+  display: block;
+  height: 100%;
+  background: #f5b942;
+  transition: width 280ms ease;
+}
+
+.questionCard {
+  display: grid;
+  gap: 18px;
+  min-height: 206px;
+  padding: 22px;
+  border: 1px solid #292f38;
+  background: #11151c;
+  animation: questionArrive 260ms ease-out both;
+}
+
+.questionCard label strong,
+.workQuestion > strong {
+  display: block;
+  margin-bottom: 10px;
+  color: #f4f6f9;
+  font-size: 18px;
+}
+
+.questionCard input,
+.questionCard textarea {
+  min-height: 46px;
+  border-color: #39414d;
+  background: #151a22;
+  font-size: 14px;
+}
+
+.questionCard textarea {
+  min-height: 100px;
+}
+
+.workQuestion {
+  display: grid;
+  gap: 14px;
+}
+
+.workOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.workOption {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  text-align: left;
+}
+
+.workOption.selected {
+  border-color: #d39a33;
+  background: #292316;
+  color: #f2d99e;
+}
+
+.privacyNote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 14px 0 0;
+  color: #ff8f8f;
+  font-size: 11px;
+  text-align: center;
+}
+
+.reviewStage {
+  display: grid;
+  gap: 20px;
+}
+
+.reviewStage.saving {
+  opacity: 0.7;
+}
+
+.reviewStage .profileSummary {
+  margin: 0;
+}
+
+.agentReviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agentReviewGrid article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px 8px;
+  padding: 11px;
+  border: 1px solid #292f38;
+  background: #11151c;
+}
+
+.agentReviewGrid svg {
+  grid-row: 1 / span 2;
+  color: #6fd49d;
+}
+
+.agentReviewGrid strong {
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.agentReviewGrid span {
+  color: #8c97a7;
+  font-size: 11px;
+}
+
+@keyframes focusArrive {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes providerLeave {
+  to {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.985);
+  }
+}
+
+@keyframes questionArrive {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes thinkingDot {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+@media (max-width: 760px) {
   .darkShell {
     grid-template-columns: 46px minmax(0, 1fr);
   }
@@ -1140,6 +1661,7 @@ select {
   .overviewGrid,
   .dashboardContent,
   .settingsGrid,
+  .modelLayout,
   .jobWorkspace,
   .composerControls,
   .customTimeFilters,
@@ -1149,7 +1671,10 @@ select {
   .firstRunGrid,
   .profileSummary,
   .promptPreviewGrid,
-  .agentGrid {
+  .agentGrid,
+  .providerFields,
+  .workOptions,
+  .agentReviewGrid {
     grid-template-columns: 1fr;
   }
 

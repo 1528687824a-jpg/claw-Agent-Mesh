@@ -89,7 +89,7 @@ Expand-Template `
   -OutputPath (Join-Path $runtimeDir "local/systemd/frpc-agent-openclaw.service")
 
 $vpsCommands = @"
-# Agent OpenClaw public Feishu ingress - VPS commands
+# honeycomb public Feishu ingress - VPS commands
 # Run on the VPS as a sudo-capable user. Do not paste secrets into chat.
 
 set -euo pipefail
@@ -113,7 +113,7 @@ sudo systemctl status frps-agent-openclaw.service --no-pager
 Set-Content -LiteralPath (Join-Path $runtimeDir "vps-commands.sh") -Value $vpsCommands -Encoding UTF8
 
 $localCommands = @"
-# Agent OpenClaw public Feishu ingress - local Windows commands
+# honeycomb public Feishu ingress - local Windows commands
 
 # 1. Start local orchestrator in mock mode for public Feishu E2E.
 `$env:OPENCLAW_AGENT_MODE='mock'

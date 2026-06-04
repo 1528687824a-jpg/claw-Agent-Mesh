@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
   Bot,
-  Boxes,
   CheckCircle2,
   ChevronRight,
   Gauge,
@@ -12,6 +11,8 @@ import {
   Languages,
   LockKeyhole,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   RefreshCw,
   Search,
@@ -36,6 +37,7 @@ import {
   type RoutingMode
 } from "./api";
 import { FirstRunPanel } from "./firstRun";
+import { HoneycombLogo } from "./brand";
 import "./styles.css";
 
 type ApiState = "checking" | "online" | "offline";
@@ -60,6 +62,44 @@ const routingModes: RoutingMode[] = [
   "classic_master_slave",
   "master_slave_discussion"
 ];
+
+const routingModeLabels: Record<Language, Record<RoutingMode, string>> = {
+  en: {
+    supervisor_pipeline: "Supervisor Pipeline",
+    pipeline: "Sequential Pipeline",
+    classic_master_slave: "Classic Lead + Workers",
+    master_slave_discussion: "Lead + Team Discussion"
+  },
+  zh: {
+    supervisor_pipeline: "监督者流水线",
+    pipeline: "顺序流水线",
+    classic_master_slave: "经典主从协作",
+    master_slave_discussion: "主从讨论协作"
+  }
+};
+
+const routingModeModelMap: Record<RoutingMode, Array<{ role: string; agents: string; model: string }>> = {
+  supervisor_pipeline: [
+    { role: "Planner", agents: "main-agent", model: "deepseek-v4-pro" },
+    { role: "Stage workers", agents: "research / writer / image", model: "deepseek-v4-pro" },
+    { role: "Supervisor", agents: "test-agent", model: "deepseek-v4-pro" }
+  ],
+  pipeline: [
+    { role: "Planner", agents: "main-agent", model: "deepseek-v4-pro" },
+    { role: "Sequential stages", agents: "research → writer → image", model: "deepseek-v4-pro" },
+    { role: "Final check", agents: "test-agent", model: "deepseek-v4-pro" }
+  ],
+  classic_master_slave: [
+    { role: "Lead", agents: "main-agent", model: "deepseek-v4-pro" },
+    { role: "Workers", agents: "research / writer / image", model: "deepseek-v4-pro" },
+    { role: "Reviewer", agents: "test-agent", model: "deepseek-v4-pro" }
+  ],
+  master_slave_discussion: [
+    { role: "Lead", agents: "main-agent", model: "deepseek-v4-pro" },
+    { role: "Discussion team", agents: "research / writer / image / test", model: "deepseek-v4-pro" },
+    { role: "Synthesis", agents: "main-agent", model: "deepseek-v4-pro" }
+  ]
+};
 
 const cancellableStatuses: JobStatus[] = [
   "created",
@@ -92,8 +132,8 @@ const languageOptions: Array<{ id: Language; label: string }> = [
 
 const translations = {
   en: {
-    appName: "Agent OpenClaw",
-    subtitle: "Local OpenClaw control desk",
+    appName: "honeycomb",
+    subtitle: "Local multi-agent control desk",
     apiOnline: "API online",
     apiOffline: "API offline",
     apiChecking: "Checking API",
@@ -153,7 +193,7 @@ const translations = {
     securitySaved: "Security settings saved.",
     passwordMismatch: "Passwords do not match.",
     securityMissing: "Add a password and recovery answer.",
-    lockTitle: "Agent OpenClaw",
+    lockTitle: "honeycomb",
     lockSubtitle: "Enter the local panel password.",
     unlock: "Unlock",
     forgotPassword: "Forgot password",
@@ -178,7 +218,7 @@ const translations = {
       {
         anchor: "setup",
         title: "First Run",
-        body: "Configure the provider, answer the work interview, and generate personalized OpenClaw agent prompts."
+        body: "Connect a provider, answer the progressive work interview, and generate a specialized agent team."
       },
       {
         anchor: "jobs",
@@ -230,8 +270,8 @@ const translations = {
     }
   },
   zh: {
-    appName: "Agent OpenClaw",
-    subtitle: "本地 OpenClaw 操作台",
+    appName: "honeycomb",
+    subtitle: "本地多 Agent 操作台",
     apiOnline: "API 在线",
     apiOffline: "API 离线",
     apiChecking: "正在检查 API",
@@ -291,7 +331,7 @@ const translations = {
     securitySaved: "安全设置已保存。",
     passwordMismatch: "两次密码不一致。",
     securityMissing: "请填写密码和密保答案。",
-    lockTitle: "Agent OpenClaw",
+    lockTitle: "honeycomb",
     lockSubtitle: "请输入本地面板密码。",
     unlock: "解锁",
     forgotPassword: "忘记密码",
@@ -316,7 +356,7 @@ const translations = {
       {
         anchor: "setup",
         title: "首次启动",
-        body: "配置 provider，回答工作访谈，生成个性化 OpenClaw agent 提示词。"
+        body: "连接 Provider，完成渐进式工作访谈，生成专属于你的 Agent 团队。"
       },
       {
         anchor: "jobs",
@@ -485,6 +525,14 @@ function App() {
     () => window.localStorage.getItem("agentOpenClaw.tourCompleted") !== "true"
   );
   const [tourIndex, setTourIndex] = useState(0);
+  const [setupComplete, setSetupComplete] = useState(
+    () =>
+      window.localStorage.getItem("honeycomb.setupCompleted") === "true" ||
+      new URLSearchParams(window.location.search).get("skipOnboarding") === "true"
+  );
+  const [sideCollapsed, setSideCollapsed] = useState(
+    () => window.localStorage.getItem("honeycomb.sideCollapsed") === "true"
+  );
   const [securityRecord, setSecurityRecord] = useState<SecurityRecord | null>(loadSecurityRecord);
   const [locked, setLocked] = useState(() => Boolean(loadSecurityRecord()) && window.sessionStorage.getItem("agentOpenClaw.unlocked") !== "true");
   const [unlockPassword, setUnlockPassword] = useState("");
@@ -519,7 +567,7 @@ function App() {
   const latestJob = jobs[0] ?? null;
   const tourStep = copy.tourSteps[tourIndex];
 
-  const primaryNav = [
+  const allPrimaryNav = [
     { id: "dashboard" as const, icon: Gauge, label: copy.dashboard, group: copy.navGroups.operate },
     { id: "setup" as const, icon: Sparkles, label: copy.setupTab, group: copy.navGroups.operate },
     { id: "jobs" as const, icon: MessageSquare, label: copy.jobsView, group: copy.navGroups.operate },
@@ -527,6 +575,24 @@ function App() {
     { id: "models" as const, icon: SlidersHorizontal, label: copy.modelsView, group: copy.navGroups.build },
     { id: "memory" as const, icon: History, label: copy.memoryView, group: copy.navGroups.build }
   ];
+  const primaryNav = setupComplete || showTour
+    ? allPrimaryNav
+    : allPrimaryNav.filter((item) => item.id === "setup");
+  const routingLabel = (mode: RoutingMode) => routingModeLabels[language][mode];
+  const agentSequenceLabel = (value: string) => {
+    if (language !== "zh") return value;
+    return value
+      .replaceAll("main-agent", "主控 Agent")
+      .replaceAll("research-agent", "研究 Agent")
+      .replaceAll("writer-agent", "写作 Agent")
+      .replaceAll("image-agent", "图像 Agent")
+      .replaceAll("test-agent", "质检 Agent")
+      .replaceAll("main", "主控")
+      .replaceAll("research", "研究")
+      .replaceAll("writer", "写作")
+      .replaceAll("image", "图像")
+      .replaceAll("test", "质检");
+  };
 
   useEffect(() => {
     window.localStorage.setItem("agentOpenClaw.language", language);
@@ -535,6 +601,16 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem("agentOpenClaw.activeView", activeView);
   }, [activeView]);
+
+  useEffect(() => {
+    window.localStorage.setItem("honeycomb.sideCollapsed", String(sideCollapsed));
+  }, [sideCollapsed]);
+
+  useEffect(() => {
+    if (!showTour && !setupComplete && activeView !== "setup") {
+      setActiveView("setup");
+    }
+  }, [activeView, setupComplete, showTour]);
 
   function getJobTimeWindow() {
     if (jobTimeFilter === "24h") {
@@ -762,6 +838,9 @@ function App() {
   function completeTour() {
     window.localStorage.setItem("agentOpenClaw.tourCompleted", "true");
     setShowTour(false);
+    if (!setupComplete) {
+      setActiveView("setup");
+    }
   }
 
   useEffect(() => {
@@ -908,7 +987,7 @@ function App() {
                 <span className={`dot ${statusTone(latestJob.status)}`} />
                 <span>
                   <strong>{latestJob.id}</strong>
-                  <small>{latestJob.routingMode}</small>
+                  <small>{routingLabel(latestJob.routingMode)}</small>
                 </span>
                 <em>{copy.statuses[latestJob.status]}</em>
               </button>
@@ -929,11 +1008,11 @@ function App() {
               </div>
               <div>
                 <span>{copy.modelHint}</span>
-                <strong>{routingMode}</strong>
+                <strong>{routingLabel(routingMode)}</strong>
               </div>
               <div>
                 <span>{copy.agentHint}</span>
-                <strong>main / research / writer / image / test</strong>
+                <strong>{agentSequenceLabel("main / research / writer / image / test")}</strong>
               </div>
             </div>
           </section>
@@ -967,7 +1046,7 @@ function App() {
               >
                 {routingModes.map((mode) => (
                   <option value={mode} key={mode}>
-                    {mode}
+                    {routingLabel(mode)}
                   </option>
                 ))}
               </select>
@@ -1069,7 +1148,7 @@ function App() {
                     <span className={`dot ${statusTone(job.status)}`} />
                     <span className="jobMeta">
                       <strong>{job.id}</strong>
-                      <span>{job.routingMode}</span>
+                      <span>{routingLabel(job.routingMode)}</span>
                     </span>
                     <span className="jobStatus">{copy.statuses[job.status]}</span>
                     <span className="jobTime">{formatTime(job.createdAt, language)}</span>
@@ -1091,7 +1170,7 @@ function App() {
             <div className="sectionHeader detailHeader">
               <div>
                 <h2>{selectedFromList?.id ?? copy.noJobSelected}</h2>
-                <p>{selectedFromList ? `${selectedFromList.ingressOrigin} / ${selectedFromList.routingMode}` : "-"}</p>
+                <p>{selectedFromList ? `${selectedFromList.ingressOrigin} / ${routingLabel(selectedFromList.routingMode)}` : "-"}</p>
               </div>
               <button
                 className="dangerButton"
@@ -1154,7 +1233,33 @@ function App() {
   }
 
   function renderAgents() {
-    const agents = ["main-agent", "research-agent", "writer-agent", "image-agent", "test-agent"];
+    const agents = [
+      {
+        id: "main-agent",
+        name: language === "zh" ? "主控 Agent" : "Main agent",
+        description: language === "zh" ? "拆解目标、选择编排模式、分配工作并整合最终结果。" : "Breaks down goals, selects routing, delegates work, and synthesizes the final result."
+      },
+      {
+        id: "research-agent",
+        name: language === "zh" ? "研究 Agent" : "Research agent",
+        description: language === "zh" ? "收集背景、证据、约束和风险，为后续工作建立可靠上下文。" : "Collects context, evidence, constraints, and risks before downstream work starts."
+      },
+      {
+        id: "writer-agent",
+        name: language === "zh" ? "写作 Agent" : "Writer agent",
+        description: language === "zh" ? "把研究和计划转化为清晰、成熟、可以交付的文字产出。" : "Turns research and plans into clear, polished, deliverable writing."
+      },
+      {
+        id: "image-agent",
+        name: language === "zh" ? "图像 Agent" : "Image agent",
+        description: language === "zh" ? "生成视觉方案、图片 brief 和可执行的图像提示词。" : "Produces visual directions, image briefs, and executable image prompts."
+      },
+      {
+        id: "test-agent",
+        name: language === "zh" ? "质检 Agent" : "Test agent",
+        description: language === "zh" ? "按照用户质量标准检查结果，并给出通过或修改建议。" : "Checks results against the user's quality bar and recommends pass or revision."
+      }
+    ];
     return (
       <section className="deskPage utilityPage">
         <div className="pageHero compactHero">
@@ -1165,10 +1270,14 @@ function App() {
         </div>
         <div className="agentGrid">
           {agents.map((agent) => (
-            <article className="deskPanel agentPanel" key={agent}>
+            <article className="deskPanel agentPanel" key={agent.id}>
               <Bot size={20} aria-hidden="true" />
-              <h2>{agent}</h2>
-              <p>{agent === "main-agent" ? "routing / planning / synthesis" : "specialized stage work"}</p>
+              <div>
+                <h2>{agent.name}</h2>
+                <small>{agent.id}</small>
+              </div>
+              <p>{agent.description}</p>
+              <span className="agentModelTag">DeepSeek · deepseek-v4-pro</span>
             </article>
           ))}
         </div>
@@ -1177,6 +1286,20 @@ function App() {
   }
 
   function renderModels() {
+    const roleLabels: Record<string, string> = language === "zh"
+      ? {
+          Planner: "规划模型",
+          "Stage workers": "阶段执行模型",
+          Supervisor: "监督模型",
+          "Sequential stages": "顺序阶段模型",
+          "Final check": "最终检查模型",
+          Lead: "主控模型",
+          Workers: "执行模型",
+          Reviewer: "评审模型",
+          "Discussion team": "讨论团队模型",
+          Synthesis: "整合模型"
+        }
+      : {};
     return (
       <section className="deskPage utilityPage">
         <div className="pageHero compactHero">
@@ -1185,27 +1308,13 @@ function App() {
             <h1>{copy.modelsView}</h1>
           </div>
         </div>
-        <div className="settingsGrid">
-          <section className="deskPanel">
-            <h2>{copy.currentModel}</h2>
-            <div className="systemRows">
-              <div>
-                <span>Provider</span>
-                <strong>DeepSeek</strong>
-              </div>
-              <div>
-                <span>Model</span>
-                <strong>deepseek-v4-pro</strong>
-              </div>
-              <div>
-                <span>{copy.routing}</span>
-                <strong>{routingMode}</strong>
-              </div>
-            </div>
-          </section>
+        <div className="modelLayout">
           <section className="deskPanel">
             <h2>{copy.routing}</h2>
-            <div className="routingList">
+            <p className="mutedText">
+              {language === "zh" ? "选择编排模式，查看该模式中每个角色实际使用的模型。" : "Choose a routing mode to inspect the model used by every role in that mode."}
+            </p>
+            <div className="routingList modelRoutingList">
               {routingModes.map((mode) => (
                 <button
                   key={mode}
@@ -1213,8 +1322,29 @@ function App() {
                   type="button"
                   onClick={() => setRoutingMode(mode)}
                 >
-                  {mode}
+                  <span>{routingLabel(mode)}</span>
+                  <small>{language === "zh" ? "编排配置" : mode}</small>
                 </button>
+              ))}
+            </div>
+          </section>
+          <section className="deskPanel">
+            <div className="panelHeader">
+              <div>
+                <h2>{routingLabel(routingMode)}</h2>
+                <p className="mutedText">{language === "zh" ? "当前所有角色使用同一个已配置模型；后续可分别覆盖。" : "All roles currently use the configured model; each role can be overridden later."}</p>
+              </div>
+              <span className="agentModelTag">DeepSeek</span>
+            </div>
+            <div className="modelRoleList">
+              {routingModeModelMap[routingMode].map((entry) => (
+                <article key={`${entry.role}-${entry.agents}`}>
+                  <div>
+                    <span>{roleLabels[entry.role] || entry.role}</span>
+                    <strong>{agentSequenceLabel(entry.agents)}</strong>
+                  </div>
+                  <code>{entry.model}</code>
+                </article>
               ))}
             </div>
           </section>
@@ -1234,21 +1364,29 @@ function App() {
         </div>
         <div className="settingsGrid">
           <section className="deskPanel">
-            <h2>Prompt library</h2>
+            <h2>{language === "zh" ? "提示词库" : "Prompt library"}</h2>
             <div className="systemRows">
               <div>
-                <span>First Run bundle</span>
-                <strong>desktop-first-run</strong>
+                <span>{language === "zh" ? "首次启动配置包" : "First Run bundle"}</span>
+                <strong>{language === "zh" ? "桌面首次启动" : "desktop-first-run"}</strong>
               </div>
               <div>
-                <span>Agent prompts</span>
-                <strong>main / research / writer / image / test</strong>
+                <span>{language === "zh" ? "Agent 提示词" : "Agent prompts"}</span>
+                <strong>{language === "zh" ? "主控 / 研究 / 写作 / 图像 / 质检" : "main / research / writer / image / test"}</strong>
               </div>
             </div>
           </section>
           <section className="deskPanel">
-            <h2>Experience memory</h2>
-            <p className="mutedText">Job history, artifacts, reviews, and final summaries will become reusable context after alpha.</p>
+            <h2>{language === "zh" ? "经验记忆" : "Experience memory"}</h2>
+            <p className="mutedText">
+              {language === "zh"
+                ? "任务历史、产物、评审和最终总结会沉淀为可复用经验。写入前由用户确认，避免错误经验自动扩散。"
+                : "Job history, artifacts, reviews, and final summaries become reusable experience after user review, so weak conclusions do not spread automatically."}
+            </p>
+            <div className="memoryStates">
+              <span>{language === "zh" ? "待确认经验" : "Pending review"} <strong>0</strong></span>
+              <span>{language === "zh" ? "已采纳经验" : "Adopted"} <strong>0</strong></span>
+            </div>
           </section>
         </div>
       </section>
@@ -1321,7 +1459,17 @@ function App() {
 
   function renderActiveView() {
     if (activeView === "dashboard") return renderDashboard();
-    if (activeView === "setup") return <FirstRunPanel language={language} />;
+    if (activeView === "setup") {
+      return (
+        <FirstRunPanel
+          language={language}
+          onComplete={() => {
+            setSetupComplete(true);
+            setActiveView("dashboard");
+          }}
+        />
+      );
+    }
     if (activeView === "jobs") return renderJobs();
     if (activeView === "agents") return renderAgents();
     if (activeView === "models") return renderModels();
@@ -1330,12 +1478,22 @@ function App() {
   }
 
   return (
-    <main className="shell darkShell">
+    <main className={`shell darkShell ${sideCollapsed ? "sideCollapsed" : ""}`}>
       <aside className="activityRail" data-tour-anchor="activity">
         <div className="railBrand">
-          <Boxes size={24} aria-hidden="true" />
+          <HoneycombLogo size={30} />
         </div>
         <nav aria-label="Primary">
+          <button
+            className="railButton"
+            data-testid="sidebar-toggle"
+            type="button"
+            title={sideCollapsed ? (language === "zh" ? "展开侧栏" : "Expand sidebar") : (language === "zh" ? "收起侧栏" : "Collapse sidebar")}
+            aria-label={sideCollapsed ? (language === "zh" ? "展开侧栏" : "Expand sidebar") : (language === "zh" ? "收起侧栏" : "Collapse sidebar")}
+            onClick={() => setSideCollapsed((current) => !current)}
+          >
+            {sideCollapsed ? <PanelLeftOpen size={20} aria-hidden="true" /> : <PanelLeftClose size={20} aria-hidden="true" />}
+          </button>
           {primaryNav.map((item) => {
             const Icon = item.icon;
             return (
@@ -1356,19 +1514,23 @@ function App() {
           })}
         </nav>
         <div className="railBottom">
-          <button className="railButton" type="button" title={copy.settingsView} aria-label={copy.settingsView} onClick={() => setActiveView("settings")}>
-            <Settings size={20} aria-hidden="true" />
-          </button>
+          {setupComplete || showTour ? (
+            <button className="railButton" type="button" title={copy.settingsView} aria-label={copy.settingsView} onClick={() => setActiveView("settings")}>
+              <Settings size={20} aria-hidden="true" />
+            </button>
+          ) : null}
           <button className="railButton" type="button" title={copy.languageLabel} aria-label={copy.languageLabel} onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>
             <Languages size={20} aria-hidden="true" />
           </button>
         </div>
       </aside>
 
-      <aside className="sideBar">
+      <aside className="sideBar" aria-hidden={sideCollapsed}>
         <div className="sideHeader">
-          <strong>{copy.appName}</strong>
-          <small>{copy.subtitle}</small>
+          <div>
+            <strong>{copy.appName}</strong>
+            <small>{copy.subtitle}</small>
+          </div>
         </div>
         <nav className="sideNav" aria-label="Sections">
           {[copy.navGroups.operate, copy.navGroups.build].map((group) => (
@@ -1411,7 +1573,10 @@ function App() {
             <button className="tourClose" type="button" aria-label={copy.tourSkip} onClick={completeTour}>
               <X size={16} aria-hidden="true" />
             </button>
-            <span>{copy.tourProgress} {tourIndex + 1} / {copy.tourSteps.length}</span>
+            <div className="tourMark">
+              <HoneycombLogo size={42} mode="talking" />
+              <span>{copy.tourProgress} {tourIndex + 1} / {copy.tourSteps.length}</span>
+            </div>
             <h2>{tourStep.title}</h2>
             <p>{tourStep.body}</p>
             <div className="tourActions">

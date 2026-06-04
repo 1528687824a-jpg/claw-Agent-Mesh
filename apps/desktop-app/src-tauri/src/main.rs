@@ -68,5 +68,5 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![save_first_run_setup])
         .run(tauri::generate_context!())
-        .expect("error while running Agent OpenClaw desktop shell");
+        .expect("error while running Honeycomb desktop shell");
 }

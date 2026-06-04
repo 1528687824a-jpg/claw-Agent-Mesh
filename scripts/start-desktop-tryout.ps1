@@ -102,7 +102,7 @@ if (-not (Test-Path -LiteralPath $desktopNodeModules)) {
 }
 
 Write-Output ""
-Write-Output "Launching Agent OpenClaw desktop app..."
+Write-Output "Launching honeycomb desktop app..."
 Write-Output "Backend API: http://localhost:3000"
 Write-Output "Close the Tauri window or press Ctrl+C in this terminal when done."
 Write-Output "Stop backend containers with: npm run tryout:stop"

@@ -1,5 +1,5 @@
 {
-  "name": "agent-openclaw-orchestrator",
+  "name": "honeycomb-orchestrator",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "private": true,
@@ -33,6 +33,7 @@
     "smoke:openclaw-real": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-openclaw-real.ps1",
     "smoke:desktop-ui": "tsx scripts/smoke-desktop-ui.ts",
     "smoke:desktop-ui-prod": "tsx scripts/smoke-desktop-ui.ts --prod",
+    "smoke:desktop-onboarding": "tsx scripts/smoke-desktop-ui.ts --prod --onboarding",
     "smoke:tauri-shell": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-tauri-shell.ps1",
     "m3:generate": "tsx scripts/generate-cluster-config.ts",
     "prepare:public-ingress": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-public-ingress-bundle.ps1",

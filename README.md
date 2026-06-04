@@ -1,8 +1,8 @@
-# Agent OpenClaw
+# honeycomb
 
-Agent OpenClaw is a local-first multi-agent orchestration platform for
-OpenClaw. The GitHub repository is `claw-Agent-Mesh`; the product is Agent
-OpenClaw.
+honeycomb is a local-first multi-agent orchestration platform for OpenClaw.
+It gives an owner a durable control plane, a desktop console, and a guided
+first-run interview that specializes an agent team around real work.
 
 Use it when a one-off bot script is too fragile, but a hosted workflow product
 is too opaque. It gives you a durable DBOS/Postgres control plane, four routing
@@ -14,7 +14,7 @@ interview-style config flow.
 
 Most multi-agent demos are easy to start and hard to trust: no durable state,
 unclear handoffs, no replayable timeline, and no clean path from "my first
-local run" to "my own agent cluster." Agent OpenClaw starts from the opposite
+local run" to "my own agent cluster." honeycomb starts from the opposite
 end:
 
 ```text
@@ -27,7 +27,7 @@ OpenClaw-native     a platform layer around OpenClaw, not a replacement for it
 
 ![HTTP-only quickstart demo](docs/assets/quickstart-demo.gif)
 
-![Agent OpenClaw desktop UI](docs/assets/desktop-ui-mvp.png)
+![honeycomb desktop UI](docs/assets/desktop-ui-mvp.png)
 
 ## Choose Your Path
 

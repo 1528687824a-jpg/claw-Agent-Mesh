@@ -5,7 +5,7 @@ logPath = fso.BuildPath(fso.GetParentFolderName(scriptDir), "logs\desktop-launch
 cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & ps1 & """"
 exitCode = CreateObject("WScript.Shell").Run(cmd, 0, True)
 If exitCode <> 0 Then
-  MsgBox "Agent OpenClaw failed to start." & vbCrLf & vbCrLf & _
+  MsgBox "honeycomb failed to start." & vbCrLf & vbCrLf & _
     "See startup details here:" & vbCrLf & logPath, _
-    vbExclamation, "Agent OpenClaw"
+    vbExclamation, "honeycomb"
 End If

@@ -369,7 +369,7 @@ async function callOpenAiCompatiblePlanner(
           {
             role: "system",
             content: [
-              "You plan Agent OpenClaw clusters from interview answers.",
+              "You plan honeycomb agent clusters from interview answers.",
               "Return only JSON, with no Markdown.",
               "Use only roles from the provided catalog.",
               "Prefer the smallest useful sequence of stages.",
