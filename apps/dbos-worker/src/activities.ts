@@ -33,6 +33,7 @@ import {
   markModelCallSucceeded
 } from "../../../packages/db/src/model-calls";
 import { getAgentEventsForJob } from "../../../packages/db/src/session";
+import { createExperienceCandidate } from "../../../packages/db/src/experience";
 import type {
   AgentEventRecord,
   ArtifactRecord,
@@ -1604,6 +1605,52 @@ export async function finalizeJob(jobId: string) {
     artifactId: artifact.id,
     finalPath
   });
+
+  const experience = await createExperienceCandidate({
+    id: `${jobId}-EXP-ROUTING-OUTCOME`,
+    sourceJobId: jobId,
+    kind: "routing_outcome",
+    scope: "routing_mode",
+    scopeKey: job.routingMode ?? DEFAULT_ROUTING_MODE,
+    summary: `Routing mode ${job.routingMode ?? DEFAULT_ROUTING_MODE} completed a job successfully and is ready for user review before reuse.`,
+    evidence: [
+      {
+        type: "job_succeeded",
+        jobId,
+        routingMode: job.routingMode ?? DEFAULT_ROUTING_MODE,
+        finalArtifactId: artifact.id
+      },
+      {
+        type: "completed_stages",
+        stages: stages.map((stage) => ({
+          stageId: stage.id,
+          stageIndex: stage.stageIndex,
+          agentId: stage.agentId,
+          status: stage.status
+        }))
+      }
+    ],
+    confidence: 0.55,
+    metadata: {
+      extractionVersion: "routing-outcome.v1",
+      requiresHumanReview: true
+    }
+  });
+  await appendJobEvent(
+    jobId,
+    "experience.candidate_created",
+    {
+      experienceId: experience.id,
+      kind: experience.kind,
+      scope: experience.scope,
+      scopeKey: experience.scopeKey,
+      confidence: experience.confidence
+    },
+    {
+      actor: "memory-agent",
+      artifactId: artifact.id
+    }
+  );
 
   await archiveJobSession({
     jobId,

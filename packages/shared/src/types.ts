@@ -65,6 +65,33 @@ export type JobRecord = {
   updatedAt: string;
 };
 
+export const EXPERIENCE_STATUSES = ["candidate", "adopted", "rejected"] as const;
+export type ExperienceStatus = (typeof EXPERIENCE_STATUSES)[number];
+
+export const EXPERIENCE_KINDS = ["routing_outcome"] as const;
+export type ExperienceKind = (typeof EXPERIENCE_KINDS)[number];
+
+export const EXPERIENCE_SCOPES = ["routing_mode"] as const;
+export type ExperienceScope = (typeof EXPERIENCE_SCOPES)[number];
+
+export type ExperienceRecord = {
+  id: string;
+  sourceJobId: string;
+  kind: ExperienceKind;
+  scope: ExperienceScope;
+  scopeKey: string;
+  status: ExperienceStatus;
+  summary: string;
+  evidence: Array<Record<string, unknown>>;
+  confidence: number;
+  occurrenceCount: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  adoptedAt: string | null;
+  rejectedAt: string | null;
+};
+
 export type CreateJobInput = {
   rawPrompt: string;
   ingressOrigin?: IngressOrigin;

@@ -12,12 +12,21 @@ import {
 } from "../../../packages/db/src/jobs";
 import { markModelCallFailedUnknownOutcome } from "../../../packages/db/src/model-calls";
 import {
+  listExperiences,
+  setExperienceStatus
+} from "../../../packages/db/src/experience";
+import {
   getGroupMessagesForJob,
   getJobDetails,
   getJobTimeline,
   InvalidTimelineCursorError
 } from "../../../packages/db/src/pipeline";
-import { INGRESS_ORIGINS, JOB_STATUSES } from "../../../packages/shared/src/types";
+import {
+  EXPERIENCE_STATUSES,
+  INGRESS_ORIGINS,
+  JOB_STATUSES,
+  type ExperienceStatus
+} from "../../../packages/shared/src/types";
 import { launchDbos, startJobWorkflow } from "./dbos-runtime";
 import { ingressAdapters } from "./adapters";
 
@@ -51,6 +60,11 @@ const cancelJobSchema = z.object({
   requesterId: z.string().max(200).optional()
 });
 
+const listExperiencesQuerySchema = z.object({
+  status: z.enum(EXPERIENCE_STATUSES).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional()
+});
+
 const defaultCorsOrigins = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -80,6 +94,39 @@ function requireAdminToken(request: express.Request, response: express.Response)
   }
 
   return true;
+}
+
+async function respondWithExperienceStatus(
+  request: express.Request,
+  response: express.Response,
+  status: Exclude<ExperienceStatus, "candidate">
+) {
+  const experienceId = Array.isArray(request.params.experienceId)
+    ? request.params.experienceId[0] ?? ""
+    : request.params.experienceId;
+  const result = await setExperienceStatus(experienceId, status);
+  if (!result.experience) {
+    response.status(404).json({ error: "experience_not_found" });
+    return;
+  }
+
+  if (result.changed) {
+    await appendJobEvent(
+      result.experience.sourceJobId,
+      `experience.${status}`,
+      {
+        experienceId: result.experience.id,
+        kind: result.experience.kind,
+        scope: result.experience.scope,
+        scopeKey: result.experience.scopeKey
+      },
+      {
+        actor: "user"
+      }
+    );
+  }
+
+  response.json(result);
 }
 
 async function main() {
@@ -183,6 +230,31 @@ async function main() {
         return;
       }
 
+      next(error);
+    }
+  });
+
+  app.get("/memory/experiences", async (request, response, next) => {
+    try {
+      const query = listExperiencesQuerySchema.parse(request.query);
+      response.json(await listExperiences(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/memory/experiences/:experienceId/adopt", async (request, response, next) => {
+    try {
+      await respondWithExperienceStatus(request, response, "adopted");
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/memory/experiences/:experienceId/reject", async (request, response, next) => {
+    try {
+      await respondWithExperienceStatus(request, response, "rejected");
+    } catch (error) {
       next(error);
     }
   });

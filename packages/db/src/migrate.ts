@@ -139,6 +139,24 @@ const statements = [
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
   )`,
+  `create table if not exists agent.experience_candidates (
+    id text primary key,
+    source_job_id text not null references agent.jobs(id),
+    kind text not null,
+    scope text not null,
+    scope_key text not null default '',
+    status text not null default 'candidate',
+    summary text not null,
+    evidence jsonb not null default '[]',
+    confidence numeric(4, 3) not null,
+    occurrence_count int not null default 1,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    adopted_at timestamptz,
+    rejected_at timestamptz,
+    unique(source_job_id, kind, scope, scope_key)
+  )`,
   `alter table agent.artifacts
     drop constraint if exists artifacts_stage_id_fkey`,
   `alter table agent.artifacts
@@ -178,7 +196,11 @@ const statements = [
   `create index if not exists model_calls_job_id_created_at_idx
     on agent.model_calls(job_id, created_at)`,
   `create index if not exists model_calls_stage_attempt_idx
-    on agent.model_calls(stage_id, attempt_no, action_type)`
+    on agent.model_calls(stage_id, attempt_no, action_type)`,
+  `create index if not exists experience_candidates_status_updated_at_idx
+    on agent.experience_candidates(status, updated_at desc)`,
+  `create index if not exists experience_candidates_scope_idx
+    on agent.experience_candidates(scope, scope_key, status)`
 ];
 
 async function main() {

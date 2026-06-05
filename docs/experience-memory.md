@@ -1,89 +1,63 @@
-# Experience Memory
+# 经验记忆
 
-Agent OpenClaw already records durable job history: job events, agent events,
-messages, artifacts, reviews, final outputs, retention policy, and timeline
-cursor pagination. Historical design notes also reserved long-term experience
-files such as:
+Honeycomb 已经持久化保存任务事件、Agent 事件、消息、产物、评审、最终结果、保留策略和完整时间线。经验记忆不是再保存一份日志，而是从这些证据中提取未来可能有用、但仍需用户确认的原子化经验。
+
+## 为什么需要
+
+产品不应该只会完成一次任务，还应该逐步理解：
 
 ```text
-经验库-资料.md
-经验库-文案.md
-经验库-图片.md
-经验库-视频.md
+维护者偏好的工作方式
+不同任务适合哪种编排模式
+哪些提示词更容易通过评审
+哪些失败模式反复出现
+哪些产物值得作为后续范例
 ```
 
-This page captures the product direction for turning that raw history into a
-usable "experience memory" layer.
+目标不是照搬外部记忆产品，而是让 Honeycomb 自己的持久时间线、质量门禁和产物真正服务后续任务。
 
-## Why It Matters
+## 已实现的第一阶段
 
-The product should not only run one task. It should improve from prior tasks:
+每个成功任务会生成一条保守的经验候选：
 
 ```text
-what the maintainer prefers
-which routing modes work for which job types
-which generated prompts pass review
-which failure patterns repeat
-which artifacts became reusable examples
+状态        默认 candidate，用户可明确采纳或拒绝
+来源        保留 source job
+证据        保留成功状态、编排模式、最终产物和完成阶段
+置信度      首次提取使用保守置信度，不把一次成功当成永久真理
+作用域      当前先按 routing mode 保存
+隐私        不自动把任务正文写入长期经验，也不上传外部服务
 ```
 
-The goal is not to copy an external memory product. The goal is to make Agent
-OpenClaw's own durable timeline and artifacts useful to future jobs.
+桌面“记忆”页可以按待确认、已采纳、已拒绝筛选，查看来源、作用域、证据数和置信度，并执行采纳或拒绝。
 
-## Inspiration To Absorb
-
-Modern AI memory products make two ideas clear:
+## 当前数据流
 
 ```text
-1. Memory is more than logs. It should extract facts, preferences, and recent
-   context from prior interactions.
-2. Retrieval should combine knowledge-base search with personalized/job-specific
-   memory, instead of making users know exactly what to ask for.
+任务成功
+  -> 基于持久运行证据生成经验候选
+  -> 用户在桌面记忆页检查
+  -> 采纳：进入可复用记忆集合
+  -> 拒绝：保留审计记录，但不参与后续复用
 ```
 
-For Agent OpenClaw, that maps naturally onto:
+任务重试使用确定性来源键，不会重复生成同一条候选；重复点击同一状态也不会重复写入状态事件。
+
+## 接下来建设
 
 ```text
-job timeline       -> what happened
-artifacts          -> what was produced
-test reviews       -> what quality gates caught
-final summaries    -> what worked
-experience files   -> what should be preserved across job cleanup
+1. 把已采纳经验接入后续任务和 Agent 生成。
+2. 使用“检索 -> 判断缺口 -> 再检索”的有限迭代检索，避免一次搜索决定全部上下文。
+3. 聚合同类经验的出现次数与相互矛盾证据，动态调整置信度。
+4. 增加工作区、项目和 Agent 等更细作用域。
+5. 在本地全文检索稳定后，再评估是否需要可选向量检索。
 ```
 
-## V1 Shape
-
-Start with a local-first implementation:
+## 明确不做
 
 ```text
-1. Summarize each completed job into a compact experience record.
-2. Store records under job/workspace/project scopes.
-3. Preserve the four experience files outside per-job cleanup.
-4. Surface relevant prior experience in M3 cluster generation.
-5. Show retrieved experience in the desktop timeline or a dedicated memory tab.
-```
-
-No external memory API is required for v1. Later adapters can export or sync
-experience memory to external systems if users want that.
-
-## Non-Goals For Alpha
-
-```text
-Not required before v0.1.0-alpha.
-Do not block owner tryout or first public release on this.
-Do not send private job artifacts to an external provider without explicit
-operator authorization.
-Do not treat all logs as memory; extract only durable lessons and preferences.
-```
-
-## Open Questions
-
-```text
-Should experience records live in Postgres, workspace files, or both?
-Should retrieval run through local full-text search first, then optional vector
-search later?
-Which agent owns memory extraction: main-agent, test-agent, or a future
-memory-agent?
-Should the desktop UI expose memory as a separate tab or as annotations inside
-job detail?
+不把所有日志都当作记忆。
+不因一次成功就自动形成永久规则。
+不在未经明确授权时把私有任务产物发送给外部记忆服务。
+不在实际检索闭环完成前宣称已经实现完整持续学习。
 ```
