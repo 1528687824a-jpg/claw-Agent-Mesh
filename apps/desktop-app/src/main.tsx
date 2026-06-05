@@ -24,12 +24,18 @@ import {
   X
 } from "lucide-react";
 import {
+  adoptExperience,
   cancelJob,
   createJob,
   getHealth,
   getJob,
   getJobTimeline,
+  listExperiences,
   listJobs,
+  rejectExperience,
+  type ExperienceListResponse,
+  type ExperienceRecord,
+  type ExperienceStatus,
   type JobRecord,
   type JobStatus,
   type JobTimeline,
@@ -519,6 +525,16 @@ function App() {
   const [selectedJobId, setSelectedJobId] = useState("");
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
   const [timeline, setTimeline] = useState<JobTimeline | null>(null);
+  const [experiences, setExperiences] = useState<ExperienceRecord[]>([]);
+  const [experienceSummary, setExperienceSummary] = useState<ExperienceListResponse["summary"]>({
+    candidate: 0,
+    adopted: 0,
+    rejected: 0
+  });
+  const [experienceFilter, setExperienceFilter] = useState<ExperienceStatus | "all">("candidate");
+  const [memoryBusy, setMemoryBusy] = useState(false);
+  const [memoryError, setMemoryError] = useState("");
+  const [memoryMessage, setMemoryMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showTour, setShowTour] = useState(
@@ -721,6 +737,43 @@ function App() {
     await refreshJob(nextSelectedId);
   }
 
+  async function refreshExperiences() {
+    const response = await listExperiences(experienceFilter === "all" ? undefined : experienceFilter);
+    setExperiences(response.experiences);
+    setExperienceSummary(response.summary);
+  }
+
+  async function changeExperienceStatus(
+    experienceId: string,
+    status: Exclude<ExperienceStatus, "candidate">
+  ) {
+    setMemoryBusy(true);
+    setMemoryError("");
+    setMemoryMessage("");
+    try {
+      const result = status === "adopted"
+        ? await adoptExperience(experienceId)
+        : await rejectExperience(experienceId);
+      setMemoryMessage(
+        language === "zh"
+          ? status === "adopted"
+            ? "经验已采纳，后续检索可以使用它。"
+            : "经验已拒绝，不会进入可复用记忆。"
+          : status === "adopted"
+            ? "Experience adopted and available for future retrieval."
+            : "Experience rejected and excluded from reusable memory."
+      );
+      if (!result.changed) {
+        setMemoryMessage(language === "zh" ? "经验状态没有变化。" : "Experience status was already up to date.");
+      }
+      await refreshExperiences();
+    } catch (caught) {
+      setMemoryError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setMemoryBusy(false);
+    }
+  }
+
   async function submitJob() {
     setBusy(true);
     setError(null);
@@ -873,6 +926,14 @@ function App() {
     if (apiState !== "online") return;
     refreshAll("").catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
   }, [jobStatusFilter, jobTimeFilter, customSince, customUntil, trimmedJobPromptFilter, apiState]);
+
+  useEffect(() => {
+    if (activeView !== "memory" || apiState !== "online") return;
+    setMemoryError("");
+    refreshExperiences().catch((caught) =>
+      setMemoryError(caught instanceof Error ? caught.message : String(caught))
+    );
+  }, [activeView, apiState, experienceFilter]);
 
   if (locked && securityRecord) {
     return (
@@ -1354,6 +1415,24 @@ function App() {
   }
 
   function renderMemory() {
+    const statusLabels: Record<ExperienceStatus, string> = {
+      candidate: language === "zh" ? "待确认" : "Pending review",
+      adopted: language === "zh" ? "已采纳" : "Adopted",
+      rejected: language === "zh" ? "已拒绝" : "Rejected"
+    };
+    const filterLabels: Record<ExperienceStatus | "all", string> = {
+      all: language === "zh" ? "全部" : "All",
+      candidate: statusLabels.candidate,
+      adopted: statusLabels.adopted,
+      rejected: statusLabels.rejected
+    };
+    const scopeLabel = (experience: ExperienceRecord) => {
+      if (experience.scope === "routing_mode" && routingModes.includes(experience.scopeKey as RoutingMode)) {
+        return routingLabel(experience.scopeKey as RoutingMode);
+      }
+      return experience.scopeKey;
+    };
+
     return (
       <section className="deskPage utilityPage">
         <div className="pageHero compactHero">
@@ -1384,11 +1463,117 @@ function App() {
                 : "Job history, artifacts, reviews, and final summaries become reusable experience after user review, so weak conclusions do not spread automatically."}
             </p>
             <div className="memoryStates">
-              <span>{language === "zh" ? "待确认经验" : "Pending review"} <strong>0</strong></span>
-              <span>{language === "zh" ? "已采纳经验" : "Adopted"} <strong>0</strong></span>
+              <span>{language === "zh" ? "待确认经验" : "Pending review"} <strong>{experienceSummary.candidate}</strong></span>
+              <span>{language === "zh" ? "已采纳经验" : "Adopted"} <strong>{experienceSummary.adopted}</strong></span>
+              <span>{language === "zh" ? "已拒绝经验" : "Rejected"} <strong>{experienceSummary.rejected}</strong></span>
             </div>
           </section>
         </div>
+        <section className="deskPanel memoryWorkspace">
+          <div className="panelHeader memoryToolbar">
+            <div>
+              <h2>{language === "zh" ? "经验候选" : "Experience candidates"}</h2>
+              <p className="mutedText">
+                {language === "zh"
+                  ? "任务成功只会生成待确认候选；只有你采纳后，它才会成为可复用记忆。"
+                  : "Successful jobs create review candidates only. They become reusable memory after you adopt them."}
+              </p>
+            </div>
+            <button
+              className="secondaryButton compactButton"
+              type="button"
+              onClick={() => refreshExperiences().catch((caught) => setMemoryError(caught instanceof Error ? caught.message : String(caught)))}
+              disabled={apiState !== "online" || memoryBusy}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              {language === "zh" ? "刷新" : "Refresh"}
+            </button>
+          </div>
+          <div className="memoryFilters" aria-label={language === "zh" ? "经验状态筛选" : "Experience status filters"}>
+            {(["candidate", "adopted", "rejected", "all"] as const).map((status) => (
+              <button
+                key={status}
+                className={experienceFilter === status ? "memoryFilterButton active" : "memoryFilterButton"}
+                type="button"
+                onClick={() => setExperienceFilter(status)}
+              >
+                {filterLabels[status]}
+              </button>
+            ))}
+          </div>
+          {memoryError ? <p className="error">{memoryError}</p> : null}
+          {memoryMessage ? <p className="successMessage">{memoryMessage}</p> : null}
+          {apiState !== "online" ? (
+            <div className="emptyState">
+              {language === "zh" ? "后端离线，连接后即可查看经验候选。" : "The backend is offline. Connect it to review experience candidates."}
+            </div>
+          ) : experiences.length === 0 ? (
+            <div className="emptyState">
+              {language === "zh" ? "当前筛选条件下没有经验。" : "No experiences match this filter."}
+            </div>
+          ) : (
+            <div className="experienceList" data-testid="experience-list">
+              {experiences.map((experience) => (
+                <article className="experienceCard" key={experience.id}>
+                  <div className="experienceHeader">
+                    <div>
+                      <span className={`experienceStatus ${experience.status}`}>{statusLabels[experience.status]}</span>
+                      <h3>{language === "zh" ? "编排运行结果" : "Routing outcome"}</h3>
+                    </div>
+                    <strong>{Math.round(experience.confidence * 100)}%</strong>
+                  </div>
+                  <p>
+                    {language === "zh" && experience.kind === "routing_outcome"
+                      ? `编排模式「${scopeLabel(experience)}」已成功完成一次任务；请结合来源证据判断它是否值得复用。`
+                      : experience.summary}
+                  </p>
+                  <dl className="experienceMeta">
+                    <div>
+                      <dt>{language === "zh" ? "作用域" : "Scope"}</dt>
+                      <dd>{scopeLabel(experience)}</dd>
+                    </div>
+                    <div>
+                      <dt>{language === "zh" ? "来源任务" : "Source job"}</dt>
+                      <dd>{experience.sourceJobId}</dd>
+                    </div>
+                    <div>
+                      <dt>{language === "zh" ? "证据" : "Evidence"}</dt>
+                      <dd>{experience.evidence.length} {language === "zh" ? "组" : "groups"}</dd>
+                    </div>
+                    <div>
+                      <dt>{language === "zh" ? "出现次数" : "Occurrences"}</dt>
+                      <dd>{experience.occurrenceCount}</dd>
+                    </div>
+                  </dl>
+                  {experience.status === "candidate" ? (
+                    <div className="experienceActions">
+                      <button
+                        className="primaryButton compactButton"
+                        type="button"
+                        data-testid="experience-adopt"
+                        disabled={memoryBusy}
+                        onClick={() => changeExperienceStatus(experience.id, "adopted")}
+                      >
+                        <CheckCircle2 size={14} aria-hidden="true" />
+                        {language === "zh" ? "采纳" : "Adopt"}
+                      </button>
+                      <button
+                        className="secondaryButton compactButton"
+                        type="button"
+                        data-testid="experience-reject"
+                        disabled={memoryBusy}
+                        onClick={() => changeExperienceStatus(experience.id, "rejected")}
+                      >
+                        <X size={14} aria-hidden="true" />
+                        {language === "zh" ? "拒绝" : "Reject"}
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
       </section>
     );
   }

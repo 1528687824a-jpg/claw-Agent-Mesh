@@ -14,9 +14,11 @@ const apiUrl = "http://localhost:3000";
 const mode = process.argv.includes("--prod") ? "prod" : "dev";
 const skipApiStart = process.argv.includes("--skip-api-start");
 const onboardingMode = process.argv.includes("--onboarding");
+const memoryMode = process.argv.includes("--memory");
 const uiPort = Number(process.env.DESKTOP_UI_SMOKE_PORT ?? (mode === "prod" ? 5174 : 5173));
 const uiUrl = `http://127.0.0.1:${uiPort}`;
-const screenshotPath = path.join(runtimeDir, `desktop-ui-${onboardingMode ? "onboarding-" : ""}${mode}-smoke.png`);
+const flowName = onboardingMode ? "onboarding-" : memoryMode ? "memory-" : "";
+const screenshotPath = path.join(runtimeDir, `desktop-ui-${flowName}${mode}-smoke.png`);
 
 type CdpResponse = {
   id?: number;
@@ -716,6 +718,134 @@ async function runOnboardingFlow(page: CdpClient) {
   };
 }
 
+async function runMemoryFlow(page: CdpClient) {
+  const prepareExpression = String.raw`
+    (() => {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem("honeycomb.tourCompleted", "true");
+      localStorage.setItem("honeycomb.setupCompleted", "true");
+      localStorage.setItem("agentOpenClaw.language", "zh");
+      location.search = "?lang=zh&skipOnboarding=true";
+    })()
+  `;
+
+  await page.send("Runtime.evaluate", { expression: prepareExpression, awaitPromise: false });
+  await page.send("Page.loadEventFired", {}, 10_000).catch(() => undefined);
+
+  const expression = String.raw`
+    (async () => {
+      const apiUrl = "${apiUrl}";
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const waitFor = async (fn, message, timeoutMs = 90000) => {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < timeoutMs) {
+          const value = await fn();
+          if (value) return value;
+          await sleep(150);
+        }
+        throw new Error(message);
+      };
+
+      await waitFor(() => document.querySelector(".dashboardPage"), "dashboard did not load");
+      const marker = "Desktop memory UI smoke " + Math.random().toString(16).slice(2);
+      const created = await fetch(apiUrl + "/jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prompt: marker,
+          requesterId: "desktop-memory-ui-smoke",
+          routingMode: "pipeline",
+          maxModelCalls: 20
+        })
+      }).then((response) => response.json());
+
+      await waitFor(async () => {
+        const job = await fetch(apiUrl + "/jobs/" + created.jobId).then((response) => response.json());
+        return job.status === "succeeded";
+      }, "memory smoke job did not succeed");
+
+      await waitFor(async () => {
+        const response = await fetch(apiUrl + "/memory/experiences?status=candidate&limit=200")
+          .then((candidateResponse) => candidateResponse.json());
+        return response.experiences.some((experience) => experience.sourceJobId === created.jobId);
+      }, "memory candidate was not created");
+
+      const memoryNav = await waitFor(
+        () => Array.from(document.querySelectorAll(".navItem"))
+          .find((button) => button.textContent.includes("记忆")),
+        "memory navigation item missing"
+      );
+      memoryNav.click();
+
+      const card = await waitFor(
+        () => Array.from(document.querySelectorAll(".experienceCard"))
+          .find((candidate) => candidate.textContent.includes(created.jobId)),
+        "memory candidate card missing"
+      );
+      const localizedSummary = card.textContent.includes("成功完成一次任务");
+      const evidenceVisible = card.textContent.includes("证据");
+      const adopt = card.querySelector('[data-testid="experience-adopt"]');
+      adopt.click();
+
+      await waitFor(
+        () => !Array.from(document.querySelectorAll(".experienceCard"))
+          .some((candidate) => candidate.textContent.includes(created.jobId)),
+        "adopted card did not leave candidate filter"
+      );
+
+      const adoptedFilter = await waitFor(
+        () => Array.from(document.querySelectorAll(".memoryFilterButton"))
+          .find((button) => button.textContent.includes("已采纳")),
+        "adopted filter missing"
+      );
+      adoptedFilter.click();
+
+      const adoptedCard = await waitFor(
+        () => Array.from(document.querySelectorAll(".experienceCard"))
+          .find((candidate) =>
+            candidate.textContent.includes(created.jobId) &&
+            candidate.querySelector(".experienceStatus.adopted")
+          ),
+        "adopted experience card missing"
+      );
+      const counts = Array.from(document.querySelectorAll(".memoryStates strong"))
+        .map((node) => Number(node.textContent.trim()));
+
+      return {
+        jobId: created.jobId,
+        localizedSummary,
+        evidenceVisible,
+        adoptedStatusVisible: Boolean(adoptedCard),
+        candidateCount: counts[0],
+        adoptedCount: counts[1],
+        rejectedCount: counts[2],
+        language: localStorage.getItem("agentOpenClaw.language")
+      };
+    })()
+  `;
+
+  const result = await page.send("Runtime.evaluate", {
+    expression,
+    awaitPromise: true,
+    returnByValue: true
+  }, 120_000);
+
+  if (result.exceptionDetails) {
+    throw new Error(result.exceptionDetails.text ?? "Memory UI flow failed");
+  }
+  return result.result.value as {
+    jobId: string;
+    localizedSummary: boolean;
+    evidenceVisible: boolean;
+    adoptedStatusVisible: boolean;
+    candidateCount: number;
+    adoptedCount: number;
+    rejectedCount: number;
+    language: string;
+  };
+}
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeout: NodeJS.Timeout | undefined;
   try {
@@ -733,7 +863,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
 }
 
 async function main() {
-  logStep(`mode=${mode}; skipApiStart=${skipApiStart}; onboardingMode=${onboardingMode}; uiUrl=${uiUrl}`);
+  logStep(`mode=${mode}; skipApiStart=${skipApiStart}; onboardingMode=${onboardingMode}; memoryMode=${memoryMode}; uiUrl=${uiUrl}`);
   await mkdir(runtimeDir, { recursive: true });
   await rm(screenshotPath, { force: true });
   const smokeLock = skipApiStart ? null : await acquireSmokeLock("dev-stack");
@@ -835,11 +965,40 @@ async function main() {
     const page = await openPage(browserPort, uiUrl);
     try {
       logStep("running browser UI flow");
-      const flow = onboardingMode
-        ? await withTimeout(runOnboardingFlow(page), 90_000, "desktop onboarding browser flow")
-        : await withTimeout(runUiFlow(page), 120_000, "desktop UI browser flow");
+      const flow = memoryMode
+        ? await withTimeout(runMemoryFlow(page), 120_000, "desktop memory browser flow")
+        : onboardingMode
+          ? await withTimeout(runOnboardingFlow(page), 90_000, "desktop onboarding browser flow")
+          : await withTimeout(runUiFlow(page), 120_000, "desktop UI browser flow");
       const screenshot = await page.send("Page.captureScreenshot", { format: "png" });
       await writeFile(screenshotPath, Buffer.from(screenshot.data, "base64"));
+
+      if (memoryMode) {
+        const memoryFlow = flow as Awaited<ReturnType<typeof runMemoryFlow>>;
+        console.log(
+          JSON.stringify(
+            {
+              ok: true,
+              mode,
+              memoryMode,
+              url: uiUrl,
+              ...memoryFlow,
+              screenshotPath,
+              checked: [
+                "successful_job_creates_memory_candidate",
+                "memory_page_lists_candidate",
+                "chinese_memory_summary",
+                "source_evidence_visible",
+                "adopt_candidate_from_desktop",
+                "adopted_filter_and_counts"
+              ]
+            },
+            null,
+            2
+          )
+        );
+        return;
+      }
 
       if (onboardingMode) {
         console.log(

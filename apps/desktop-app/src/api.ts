@@ -18,6 +18,39 @@ export type RoutingMode =
   | "classic_master_slave"
   | "master_slave_discussion";
 
+export type ExperienceStatus = "candidate" | "adopted" | "rejected";
+
+export type ExperienceRecord = {
+  id: string;
+  sourceJobId: string;
+  kind: "routing_outcome";
+  scope: "routing_mode";
+  scopeKey: string;
+  status: ExperienceStatus;
+  summary: string;
+  evidence: Array<Record<string, unknown>>;
+  confidence: number;
+  occurrenceCount: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  adoptedAt: string | null;
+  rejectedAt: string | null;
+};
+
+export type ExperienceListResponse = {
+  experiences: ExperienceRecord[];
+  summary: {
+    candidate: number;
+    adopted: number;
+    rejected: number;
+  };
+  filters: {
+    status: ExperienceStatus | null;
+    limit: number;
+  };
+};
+
 export type JobRecord = {
   id: string;
   sessionId: string;
@@ -199,4 +232,32 @@ export async function cancelJob(jobId: string) {
       requesterId: "desktop-app"
     })
   });
+}
+
+export async function listExperiences(status?: ExperienceStatus, limit = 100) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (status) {
+    params.set("status", status);
+  }
+  return request<ExperienceListResponse>(`/memory/experiences?${params.toString()}`);
+}
+
+export async function adoptExperience(experienceId: string) {
+  return request<{ experience: ExperienceRecord; changed: boolean }>(
+    `/memory/experiences/${experienceId}/adopt`,
+    {
+      method: "POST",
+      body: "{}"
+    }
+  );
+}
+
+export async function rejectExperience(experienceId: string) {
+  return request<{ experience: ExperienceRecord; changed: boolean }>(
+    `/memory/experiences/${experienceId}/reject`,
+    {
+      method: "POST",
+      body: "{}"
+    }
+  );
 }

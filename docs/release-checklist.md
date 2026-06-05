@@ -98,8 +98,10 @@ npm run smoke:m3-real-planner
 npm run smoke:cancel-job
 npm run smoke:timeline-since
 npm run smoke:list-jobs
+npm run smoke:experience-memory
 npm run smoke:desktop-ui
 npm run smoke:desktop-ui-prod
+npm run smoke:desktop-memory
 npm run smoke:tauri-shell
 npm --prefix apps/desktop-app run tauri:build
 ```
