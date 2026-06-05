@@ -1,5 +1,115 @@
 # Honeycomb Context Checkpoint (formerly Agent OpenClaw)
 
+## 2026-06-05 Experience Memory Candidate Loop And Claude Backend Risk Assessment
+
+### Completed in this checkpoint
+
+```text
+Implemented the first real Honeycomb experience-memory vertical slice:
+
+1. Added shared experience types:
+   - status: candidate / adopted / rejected
+   - kind: routing_outcome
+   - scope: routing_mode
+   - source job, evidence, confidence, metadata, adoptedAt/rejectedAt.
+2. Added Postgres table agent.experience_candidates.
+3. Successful jobs now create a conservative review candidate in finalizeJob:
+   - deterministic id: <jobId>-EXP-ROUTING-OUTCOME
+   - confidence: 0.55
+   - evidence includes job success, routing mode, final artifact, and completed stages.
+4. Added API:
+   - GET /memory/experiences
+   - POST /memory/experiences/:id/adopt
+   - POST /memory/experiences/:id/reject
+5. Adopt/reject writes job timeline events only when state actually changes.
+6. Desktop Memory page now lists real candidates, Chinese labels, confidence, source job, evidence count, status filters, and adopt/reject buttons.
+7. README is still Chinese and now documents the Memory experience honestly:
+   - candidates are not permanent truth;
+   - user adoption is required before reuse;
+   - retrieval into future jobs is still next work.
+8. docs/experience-memory.md was rewritten in Chinese to describe the current implemented state and next retrieval work.
+9. docs/assets/honeycomb-memory.png added as latest Memory page screenshot.
+```
+
+### Verification evidence
+
+```text
+Main repository:
+- branch: main
+- latest local merge commit: d2018bf Merge experience memory candidates
+- main is ahead of origin/main before context commit/push.
+
+Passed in worktree and then again in main repository:
+- npm run check
+- npm run check:no-secrets
+- npm --prefix apps/desktop-app run build
+- cargo check --manifest-path apps/desktop-app/src-tauri/Cargo.toml
+- npm run smoke:tauri-shell
+- npm run smoke:experience-memory
+- npm run smoke:desktop-memory
+- npm run smoke:desktop-onboarding
+- npm run smoke:desktop-ui-prod -- --skip-api-start
+
+Experience lifecycle smoke proved:
+- successful job creates candidate;
+- candidate has source job, evidence, confidence, scope;
+- explicit adopt works;
+- repeated adopt is idempotent and does not add more timeline events;
+- explicit reject works;
+- status-filtered listing and summary counts work.
+
+Desktop Memory smoke proved:
+- successful job creates a candidate visible in desktop Memory;
+- Chinese memory summary is rendered;
+- source/evidence are visible;
+- adopt button works from desktop;
+- adopted filter and counts update.
+
+Tauri/release:
+- release exe rebuilt at apps/desktop-app/src-tauri/target/release/honeycomb.exe.
+- desktop shortcut C:\Users\Administrator\Desktop\honeycomb.lnk launched the rebuilt main-repo exe in 5.09s.
+- real process tree only had msedgewebview2.exe child, no visible black console.
+```
+
+### Claude backend analysis absorbed, with corrections
+
+```text
+Read user-provided Claude file:
+C:\Users\Administrator\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\local-agent-mode-sessions\20d984a4-bff5-4fee-8d1b-d7cb84f94ea0\9fcc6203-63e1-4bb6-98e5-063de7217ee7\local_f8d6cc4b-0943-4503-a752-3f2db911ddd6\outputs\207EE6~1.MD
+
+Useful and accepted:
+1. Weak user-provided planner LLM is a real First Run quality risk.
+   Needed next: capability probe, domain keyword check, fallback safe templates.
+2. Planner should eventually become a resident meta-agent instead of one-shot setup.
+   Good v0.2 direction: cluster maintenance chat, failure diagnosis, cluster regeneration.
+3. Cancel not aborting in-flight provider calls is a real wallet risk.
+4. Missing job concurrency limit/queue is a real reliability and DoS risk.
+5. OpenClaw version detection before public release is practical and important.
+6. RTK/CONTEXT compression is lower priority than product/runtime risks.
+
+Corrected:
+1. Claude's claim that cluster.config.json lacks schemaVersion is outdated.
+   Current code already has AgentClusterConfig.schemaVersion = "agent-openclaw.cluster.v1".
+   Generator writes it, and apps/dbos-worker/src/config/cluster.ts fail-fast validates it.
+2. Timeline polling has already improved with cursor-based incremental loading, but SSE can still be a later optimization.
+```
+
+### Next tasks in order
+
+```text
+1. Let the maintainer try the rebuilt desktop app from C:\Users\Administrator\Desktop\honeycomb.lnk:
+   First Run, Jobs, Models, Memory, Settings.
+2. Add OpenClaw adapter version detection and docs for supported/tested OpenClaw version.
+3. Add First Run planner capability probe after provider key entry:
+   JSON probe, timeout handling, warning, force-continue option.
+4. Add domain keyword absorption warning and fallback safe templates for weak planner output.
+5. Add real cancel abort chain for in-flight OpenClaw/provider calls.
+6. Add concurrent job limit + queue/priority to protect Postgres/provider quotas.
+7. Connect adopted experience memory into future job planning and Agent generation retrieval.
+8. Later v0.2: resident planner/meta-agent, provider protocol expansion, SSE timeline streaming, prompt i18n, First Run state resume.
+9. Only after local owner experience feels solid: signing, release tag, first public alpha notes.
+```
+
 ## 2026-06-04 Honeycomb Desktop Experience, Branding, Chinese GitHub And ECC Assessment Checkpoint
 
 ### Long-term working rules
