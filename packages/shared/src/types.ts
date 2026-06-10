@@ -150,6 +150,115 @@ export type ToolApprovalRecord = {
   consumedAt: string | null;
 };
 
+export const PROVIDER_VERIFICATION_STATUSES = ["unknown", "succeeded", "failed"] as const;
+export type ProviderVerificationStatus = (typeof PROVIDER_VERIFICATION_STATUSES)[number];
+
+export type ModelProviderRecord = {
+  id: string;
+  displayName: string;
+  baseUrl: string;
+  defaultModel: string | null;
+  apiKeyConfigured: boolean;
+  apiKeyFingerprint: string | null;
+  verificationStatus: ProviderVerificationStatus;
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const AGENT_SYNC_STATUSES = ["pending", "synced", "failed", "unknown"] as const;
+export type AgentSyncStatus = (typeof AGENT_SYNC_STATUSES)[number];
+
+export type AgentConfigRecord = {
+  id: string;
+  displayName: string;
+  agentRole: string;
+  required: boolean;
+  enabled: boolean;
+  providerId: string | null;
+  model: string | null;
+  apiKeyConfigured: boolean;
+  apiKeyFingerprint: string | null;
+  workspacePath: string | null;
+  promptTemplatePath: string | null;
+  tools: string[];
+  openclawSyncStatus: AgentSyncStatus;
+  openclawAgentPath: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const MCP_SERVER_STATUSES = ["unknown", "available", "missing", "failed"] as const;
+export type McpServerStatus = (typeof MCP_SERVER_STATUSES)[number];
+
+export type SkillRegistryRecord = {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  source: string;
+  config: Record<string, unknown>;
+  diagnostics: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type McpServerRecord = {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  envKeys: string[];
+  enabled: boolean;
+  status: McpServerStatus;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const SCHEDULE_TYPES = ["manual", "once", "daily", "interval"] as const;
+export type ScheduleType = (typeof SCHEDULE_TYPES)[number];
+
+export const SCHEDULE_TASK_STATUSES = [
+  "idle",
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "disabled"
+] as const;
+export type ScheduledTaskStatus = (typeof SCHEDULE_TASK_STATUSES)[number];
+
+export type ScheduledTaskRecord = {
+  id: string;
+  title: string;
+  prompt: string;
+  scheduleType: ScheduleType;
+  enabled: boolean;
+  workspacePath: string | null;
+  routingMode: RoutingMode;
+  maxModelCalls: number;
+  providerId: string | null;
+  agentId: string | null;
+  runAt: string | null;
+  intervalSeconds: number | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  status: ScheduledTaskStatus;
+  lastJobId: string | null;
+  lastError: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export const EXPERIENCE_STATUSES = ["candidate", "adopted", "rejected"] as const;
 export type ExperienceStatus = (typeof EXPERIENCE_STATUSES)[number];
 

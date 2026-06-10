@@ -64,16 +64,18 @@ const capabilities: RuntimeCapability[] = [
       "GET /runtime/usage",
       "GET /sessions/:sessionId/events",
       "GET /sessions/:sessionId/events/stream",
-      "GET /runtime/capabilities"
+      "GET /runtime/capabilities",
+      "GET /runtime/diagnostics"
     ],
     implemented: [
       "Runtime log queries",
       "Usage summary",
       "Session event stream",
-      "Machine-readable capability inventory"
+      "Machine-readable capability inventory",
+      "Runtime diagnostics aggregate"
     ],
     missing: [
-      "Desktop diagnostics page still needs to consume this endpoint"
+      "Desktop diagnostics page still needs to render every diagnostic check"
     ],
     nextActions: [
       "Render runtime capabilities in settings or diagnostics UI"
@@ -186,88 +188,113 @@ const capabilities: RuntimeCapability[] = [
     id: "openclaw_sync",
     title: "OpenClaw real-agent sync",
     status: "partial",
-    summary: "Workflow shape and templates exist, but first-class provisioning and validation APIs are not complete.",
-    routes: [],
+    summary: "Runtime discovery, sync plan/apply/validate APIs, workflow shape, and templates exist; native OpenClaw launch/config integration is still partial.",
+    routes: [
+      "GET /openclaw/runtime",
+      "POST /openclaw/sync/plan",
+      "POST /openclaw/sync/apply",
+      "POST /openclaw/sync/validate"
+    ],
     implemented: [
+      "OpenClaw runtime discovery",
+      "OpenClaw sync plan API",
+      "OpenClaw prompt/config apply API",
+      "OpenClaw agent presence validation API",
       "Agent prompt templates",
       "Example OpenClaw multi-agent config",
       "Worker workflow shape",
       "OpenClaw real smoke scripts"
     ],
     missing: [
-      "Backend agent provisioning API",
-      "Backend OpenClaw runtime discovery API",
-      "Backend OpenClaw config sync API",
-      "Validation that OpenClaw can see every required agent"
+      "Native OpenClaw provider config format writer",
+      "OpenClaw launch/restart integration",
+      "Real-agent workflow replacement for remaining mock activities"
     ],
     nextActions: [
-      "Add OpenClaw runtime discovery",
-      "Add agent registry",
-      "Add OpenClaw sync and validation APIs"
+      "Connect worker execution to synced OpenClaw agents"
     ]
   },
   {
     id: "provider_registry",
     title: "Model/provider configuration center",
     status: "partial",
-    summary: "First-run UI collects model and API key, but backend provider registry and child-agent routing are not complete.",
-    routes: [],
+    summary: "Backend provider registry, local-only key status, and OpenAI-compatible verification are available; worker routing is not complete.",
+    routes: [
+      "GET /providers",
+      "POST /providers",
+      "PATCH /providers/:providerId",
+      "POST /providers/:providerId/verify"
+    ],
     implemented: [
       "First-run provider collection UI",
-      "Real-provider smoke documentation and scripts"
+      "Real-provider smoke documentation and scripts",
+      "Durable provider registry",
+      "Local-only provider key storage boundary",
+      "Redacted key configured/fingerprint status",
+      "OpenAI-compatible provider verification endpoint"
     ],
     missing: [
-      "Durable local provider registry",
-      "Key configured/redacted status API",
       "Per-agent model/provider assignment",
-      "Provider verification history"
+      "Worker use of provider registry"
     ],
     nextActions: [
-      "Add provider tables and local-only secret storage boundary",
-      "Expose provider CRUD and verification APIs"
+      "Connect agent registry and worker routing to provider registry"
     ]
   },
   {
     id: "agent_registry",
     title: "Agent registry",
-    status: "planned",
-    summary: "Product needs panel supervisor plus child agents, but backend CRUD/status/sync APIs are not implemented yet.",
-    routes: [],
+    status: "partial",
+    summary: "Backend agent registry, default Honeycomb catalog, and OpenClaw sync status tracking exist; worker execution is not complete.",
+    routes: [
+      "GET /agents",
+      "POST /agents",
+      "PATCH /agents/:agentId",
+      "POST /agents/seed-defaults"
+    ],
     implemented: [
       "Prompt templates",
-      "Front-end agent configuration panels"
-    ],
-    missing: [
-      "Agent table",
-      "Agent config API",
-      "Panel-agent name propagation from first-run setup",
-      "Required video-agent provisioning",
+      "Front-end agent configuration panels",
+      "Agent config table",
+      "Agent config CRUD API",
+      "Default panel/research/writer/image/video/test catalog",
+      "Panel agent maps to OpenClaw main-agent without duplicate Honeycomb main-agent",
       "OpenClaw sync status per agent"
     ],
+    missing: [
+      "Worker execution against synced OpenClaw agents"
+    ],
     nextActions: [
-      "Add agent registry schema and APIs",
-      "Use first-run panel-agent name as the main/panel agent id label"
+      "Connect worker execution to synced OpenClaw agents"
     ]
   },
   {
     id: "skills_mcp",
     title: "Skills and MCP registry",
-    status: "planned",
-    summary: "Skills/MCP are visible in product concept and UI copy, but backend persistence and diagnostics are not implemented.",
-    routes: [],
+    status: "partial",
+    summary: "Skills and MCP servers can be persisted, toggled, and command-checked; actual MCP call execution is not complete.",
+    routes: [
+      "GET /skills",
+      "POST /skills",
+      "PATCH /skills/:skillId",
+      "GET /mcp-servers",
+      "POST /mcp-servers",
+      "PATCH /mcp-servers/:serverId",
+      "POST /mcp-servers/:serverId/check"
+    ],
     implemented: [
-      "UI placeholders and prompt context text"
+      "Skill registry table and CRUD API",
+      "MCP server registry table and CRUD API",
+      "Enable/disable state",
+      "MCP command availability diagnostics"
     ],
     missing: [
-      "Skill registry",
-      "MCP server registry",
-      "Enable/disable state",
-      "Diagnostics",
-      "Per-agent access policy"
+      "Actual MCP session/call execution",
+      "Approval-gated MCP call proxy",
+      "Per-agent MCP access policy enforcement"
     ],
     nextActions: [
-      "Add skills and MCP registry tables",
-      "Add diagnostics endpoint and approval-gated MCP call path"
+      "Add approval-gated MCP call path after desktop approval UI"
     ]
   },
   {
@@ -292,18 +319,29 @@ const capabilities: RuntimeCapability[] = [
   {
     id: "schedules",
     title: "Scheduled tasks",
-    status: "planned",
-    summary: "One-time, daily, interval, and manual scheduled task execution are not implemented.",
-    routes: [],
-    implemented: [],
-    missing: [
+    status: "partial",
+    summary: "One-time, daily, interval, and manual tasks can be persisted and manually triggered into real jobs; background scheduling is not complete.",
+    routes: [
+      "GET /schedules",
+      "GET /schedules/due",
+      "GET /schedules/:scheduleId",
+      "POST /schedules",
+      "PATCH /schedules/:scheduleId",
+      "POST /schedules/:scheduleId/trigger"
+    ],
+    implemented: [
       "Schedule table",
+      "Schedule CRUD API",
+      "Next-run calculation for once/daily/interval tasks",
+      "Manual trigger path that creates a real job"
+    ],
+    missing: [
       "Scheduler runner",
       "Wake/startup catch-up behavior",
       "Workspace/model/reasoning configuration per schedule"
     ],
     nextActions: [
-      "Add schedule schema after agent/provider registries are in place"
+      "Add scheduler worker loop and wake-on-startup catch-up"
     ]
   },
   {
@@ -332,18 +370,19 @@ const capabilities: RuntimeCapability[] = [
     id: "installer_diagnostics",
     title: "Installer and runtime diagnostics",
     status: "partial",
-    summary: "Launcher and package layout checks exist; full installer/runtime dependency diagnostics are still incomplete.",
-    routes: [],
+    summary: "Launcher, package checks, and runtime diagnostics aggregate exist; repair actions and installer validation are still incomplete.",
+    routes: [
+      "GET /runtime/diagnostics"
+    ],
     implemented: [
       "Desktop launcher repair",
       "Package layout audit",
       "No-secret scan",
-      "Windows local Tauri shell smoke"
+      "Windows local Tauri shell smoke",
+      "Runtime diagnostics aggregate for database, capabilities, OpenClaw, providers, agents, approvals, Skills/MCP, and schedules"
     ],
     missing: [
-      "OpenClaw dependency discovery",
       "WSL/Docker/database readiness checks",
-      "Provider diagnostics",
       "Repair action API",
       "Cross-platform installer validation"
     ],
@@ -368,11 +407,10 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     summary,
     capabilities,
     recommendedNext: [
-      "OpenClaw runtime discovery",
-      "Provider registry with redacted local key status",
-      "Agent registry and OpenClaw sync",
       "Desktop approval queue UI",
-      "Skills/MCP registry"
+      "Approval-gated MCP/Web tool calls",
+      "Scheduler worker loop",
+      "Worker routing through provider and agent registries"
     ]
   };
 }

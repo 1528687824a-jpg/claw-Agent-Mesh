@@ -210,6 +210,88 @@ const statements = [
     decided_at timestamptz,
     consumed_at timestamptz
   )`,
+  `create table if not exists agent.model_providers (
+    id text primary key,
+    display_name text not null,
+    base_url text not null,
+    default_model text,
+    api_key_configured boolean not null default false,
+    api_key_fingerprint text,
+    verification_status text not null default 'unknown',
+    last_verified_at timestamptz,
+    last_error text,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  )`,
+  `create table if not exists agent.agent_configs (
+    id text primary key,
+    display_name text not null,
+    agent_role text not null,
+    required boolean not null default true,
+    enabled boolean not null default true,
+    provider_id text references agent.model_providers(id),
+    model text,
+    api_key_configured boolean not null default false,
+    api_key_fingerprint text,
+    workspace_path text,
+    prompt_template_path text,
+    tools jsonb not null default '[]',
+    openclaw_sync_status text not null default 'pending',
+    openclaw_agent_path text,
+    last_synced_at timestamptz,
+    last_error text,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  )`,
+  `create table if not exists agent.skill_registry (
+    id text primary key,
+    name text not null,
+    description text,
+    enabled boolean not null default true,
+    source text not null default 'user',
+    config jsonb not null default '{}',
+    diagnostics jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  )`,
+  `create table if not exists agent.mcp_servers (
+    id text primary key,
+    name text not null,
+    command text not null,
+    args jsonb not null default '[]',
+    env_keys jsonb not null default '[]',
+    enabled boolean not null default true,
+    status text not null default 'unknown',
+    last_checked_at timestamptz,
+    last_error text,
+    config jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  )`,
+  `create table if not exists agent.scheduled_tasks (
+    id text primary key,
+    title text not null,
+    raw_prompt text not null,
+    schedule_type text not null default 'manual',
+    enabled boolean not null default true,
+    workspace_path text,
+    routing_mode text not null default 'supervisor_pipeline',
+    max_model_calls int not null default 20,
+    provider_id text references agent.model_providers(id),
+    agent_config_id text references agent.agent_configs(id),
+    run_at timestamptz,
+    interval_seconds int,
+    next_run_at timestamptz,
+    last_run_at timestamptz,
+    status text not null default 'idle',
+    last_job_id text references agent.jobs(id),
+    last_error text,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  )`,
   `alter table agent.artifacts
     drop constraint if exists artifacts_stage_id_fkey`,
   `alter table agent.artifacts
@@ -270,7 +352,31 @@ const statements = [
     on agent.tool_approval_requests(session_id, created_at desc)`,
   `create index if not exists tool_approval_requests_stage_created_at_idx
     on agent.tool_approval_requests(stage_id, created_at desc)
-    where stage_id is not null`
+    where stage_id is not null`,
+  `create index if not exists model_providers_updated_at_idx
+    on agent.model_providers(updated_at desc)`,
+  `create index if not exists model_providers_verification_status_idx
+    on agent.model_providers(verification_status, updated_at desc)`,
+  `create index if not exists agent_configs_role_idx
+    on agent.agent_configs(agent_role, required, enabled)`,
+  `create index if not exists agent_configs_provider_idx
+    on agent.agent_configs(provider_id)
+    where provider_id is not null`,
+  `create index if not exists skill_registry_enabled_idx
+    on agent.skill_registry(enabled, updated_at desc)`,
+  `create index if not exists mcp_servers_enabled_status_idx
+    on agent.mcp_servers(enabled, status, updated_at desc)`,
+  `create index if not exists scheduled_tasks_enabled_next_run_idx
+    on agent.scheduled_tasks(enabled, next_run_at)
+    where next_run_at is not null`,
+  `create index if not exists scheduled_tasks_status_updated_idx
+    on agent.scheduled_tasks(status, updated_at desc)`,
+  `create index if not exists scheduled_tasks_provider_idx
+    on agent.scheduled_tasks(provider_id)
+    where provider_id is not null`,
+  `create index if not exists scheduled_tasks_agent_config_idx
+    on agent.scheduled_tasks(agent_config_id)
+    where agent_config_id is not null`
 ];
 
 async function main() {

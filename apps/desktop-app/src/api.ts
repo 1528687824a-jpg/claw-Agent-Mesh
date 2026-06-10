@@ -254,6 +254,345 @@ export type RuntimeCapabilitiesResponse = {
   recommendedNext: string[];
 };
 
+export type RuntimeDiagnosticStatus = "ok" | "warning" | "error" | "unknown";
+
+export type RuntimeDiagnosticCheck = {
+  id: string;
+  title: string;
+  status: RuntimeDiagnosticStatus;
+  summary: string;
+  details: Record<string, unknown>;
+};
+
+export type RuntimeDiagnosticsResponse = {
+  checkedAt: string;
+  status: RuntimeDiagnosticStatus;
+  checks: RuntimeDiagnosticCheck[];
+  recommendedActions: string[];
+};
+
+export type OpenClawRuntimeCandidate = {
+  rootPath: string;
+  source: string;
+  exists: boolean;
+  status: "ready" | "partial" | "missing";
+  agentsDir: {
+    path: string;
+    exists: boolean;
+    count: number;
+  };
+  workspaceDir: {
+    path: string;
+    exists: boolean;
+    count: number;
+  };
+  configFiles: Array<{
+    path: string;
+    exists: boolean;
+  }>;
+  notes: string[];
+};
+
+export type OpenClawRuntimeDiscovery = {
+  checkedAt: string;
+  selected: OpenClawRuntimeCandidate | null;
+  candidates: OpenClawRuntimeCandidate[];
+  nextActions: string[];
+};
+
+export type OpenClawAgentSyncItem = {
+  honeycombAgentId: string;
+  openclawAgentId: string;
+  displayName: string;
+  role: string;
+  enabled: boolean;
+  model: string | null;
+  providerId: string | null;
+  apiKeyConfigured: boolean;
+  sourceTemplatePath: string;
+  sourceTemplateExists: boolean;
+  targetAgentPromptPath: string;
+  targetWorkspacePromptPath: string;
+  status: "ready" | "missing_template";
+};
+
+export type OpenClawSyncPlan = {
+  generatedAt: string;
+  rootPath: string;
+  configPath: string;
+  agents: OpenClawAgentSyncItem[];
+  providers: Array<{
+    id: string;
+    displayName: string;
+    baseUrl: string;
+    defaultModel: string | null;
+    apiKeyConfigured: boolean;
+    apiKeyFingerprint: string | null;
+    verificationStatus: string;
+  }>;
+  warnings: string[];
+};
+
+export type OpenClawSyncApplyResult = {
+  appliedAt: string;
+  plan: OpenClawSyncPlan;
+  writtenFiles: string[];
+  skippedFiles: string[];
+};
+
+export type OpenClawValidationResult = {
+  checkedAt: string;
+  rootPath: string;
+  requiredAgents: Array<{
+    honeycombAgentId: string;
+    openclawAgentId: string;
+    present: boolean;
+    agentPromptPath: string;
+    workspacePromptPath: string;
+  }>;
+  missingAgentIds: string[];
+  ok: boolean;
+};
+
+export type ProviderVerificationStatus = "unknown" | "succeeded" | "failed";
+
+export type ModelProviderRecord = {
+  id: string;
+  displayName: string;
+  baseUrl: string;
+  defaultModel: string | null;
+  apiKeyConfigured: boolean;
+  apiKeyFingerprint: string | null;
+  verificationStatus: ProviderVerificationStatus;
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ModelProviderInput = {
+  id?: string;
+  displayName: string;
+  baseUrl: string;
+  defaultModel?: string | null;
+  apiKey?: string;
+  verify?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+export type PatchModelProviderInput = Partial<ModelProviderInput> & {
+  verificationStatus?: ProviderVerificationStatus;
+  lastError?: string | null;
+};
+
+export type ProviderVerificationResponse = {
+  provider: ModelProviderRecord | null;
+  verification: {
+    ok: boolean;
+    status: "succeeded" | "failed";
+    checkedAt: string;
+    statusCode: number | null;
+    message: string | null;
+  };
+};
+
+export type AgentSyncStatus = "pending" | "synced" | "failed" | "unknown";
+
+export type AgentConfigRecord = {
+  id: string;
+  displayName: string;
+  agentRole: string;
+  required: boolean;
+  enabled: boolean;
+  providerId: string | null;
+  model: string | null;
+  apiKeyConfigured: boolean;
+  apiKeyFingerprint: string | null;
+  workspacePath: string | null;
+  promptTemplatePath: string | null;
+  tools: string[];
+  openclawSyncStatus: AgentSyncStatus;
+  openclawAgentPath: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentConfigInput = {
+  id: string;
+  displayName: string;
+  agentRole: string;
+  required?: boolean;
+  enabled?: boolean;
+  providerId?: string | null;
+  model?: string | null;
+  apiKeyConfigured?: boolean;
+  workspacePath?: string | null;
+  promptTemplatePath?: string | null;
+  tools?: string[];
+  openclawSyncStatus?: AgentSyncStatus;
+  openclawAgentPath?: string | null;
+  lastError?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type PatchAgentConfigInput = Partial<Omit<AgentConfigInput, "id">>;
+
+export type SeedDefaultAgentsInput = {
+  panelAgentName?: string;
+  providerId?: string | null;
+  model?: string | null;
+};
+
+export type McpServerStatus = "unknown" | "available" | "missing" | "failed";
+
+export type SkillRegistryRecord = {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  source: string;
+  config: Record<string, unknown>;
+  diagnostics: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SkillRegistryInput = {
+  id?: string;
+  name: string;
+  description?: string | null;
+  enabled?: boolean;
+  source?: string;
+  config?: Record<string, unknown>;
+  diagnostics?: Record<string, unknown>;
+};
+
+export type McpServerRecord = {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  envKeys: string[];
+  enabled: boolean;
+  status: McpServerStatus;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type McpServerInput = {
+  id?: string;
+  name: string;
+  command: string;
+  args?: string[];
+  envKeys?: string[];
+  enabled?: boolean;
+  status?: McpServerStatus;
+  lastError?: string | null;
+  config?: Record<string, unknown>;
+};
+
+export type McpServerCheckResponse = {
+  server: McpServerRecord | null;
+  check: {
+    status: "available" | "missing" | "failed";
+    checkedAt: string;
+    resolvedPath: string | null;
+    error: string | null;
+  };
+};
+
+export type ScheduleType = "manual" | "once" | "daily" | "interval";
+
+export type ScheduledTaskStatus =
+  | "idle"
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "disabled";
+
+export type ScheduledTaskRecord = {
+  id: string;
+  title: string;
+  prompt: string;
+  scheduleType: ScheduleType;
+  enabled: boolean;
+  workspacePath: string | null;
+  routingMode: RoutingMode;
+  maxModelCalls: number;
+  providerId: string | null;
+  agentId: string | null;
+  runAt: string | null;
+  intervalSeconds: number | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  status: ScheduledTaskStatus;
+  lastJobId: string | null;
+  lastError: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScheduledTaskInput = {
+  id?: string;
+  title: string;
+  prompt: string;
+  scheduleType?: ScheduleType;
+  enabled?: boolean;
+  workspacePath?: string | null;
+  routingMode?: RoutingMode;
+  maxModelCalls?: number;
+  providerId?: string | null;
+  agentId?: string | null;
+  runAt?: string | null;
+  intervalSeconds?: number | null;
+  nextRunAt?: string | null;
+  status?: ScheduledTaskStatus;
+  lastError?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type ListScheduledTasksInput = {
+  status?: ScheduledTaskStatus;
+  enabled?: boolean;
+  limit?: number;
+};
+
+export type ListScheduledTasksResponse = {
+  schedules: ScheduledTaskRecord[];
+  filters: {
+    status: ScheduledTaskStatus | null;
+    enabled: boolean | null;
+    limit: number;
+  };
+};
+
+export type DueScheduledTasksResponse = {
+  checkedAt: string;
+  schedules: ScheduledTaskRecord[];
+};
+
+export type TriggerScheduledTaskInput = {
+  startWorkflow?: boolean;
+  force?: boolean;
+  requesterId?: string;
+};
+
+export type TriggerScheduledTaskResponse = {
+  ok: boolean;
+  schedule: ScheduledTaskRecord | null;
+  job: JobRecord;
+  workflowId: string | null;
+};
+
 export type WorkspaceEntry = {
   name: string;
   relativePath: string;
@@ -807,6 +1146,198 @@ export async function getRuntimeUsage(input: RuntimeUsageInput = {}) {
 
 export async function getRuntimeCapabilities() {
   return request<RuntimeCapabilitiesResponse>("/runtime/capabilities");
+}
+
+export async function getRuntimeDiagnostics(input: { openClawRootPath?: string } = {}) {
+  const params = new URLSearchParams();
+  if (input.openClawRootPath) {
+    params.set("openClawRootPath", input.openClawRootPath);
+  }
+  const query = params.toString();
+  return request<RuntimeDiagnosticsResponse>(`/runtime/diagnostics${query ? `?${query}` : ""}`);
+}
+
+export async function discoverOpenClawRuntime(rootPath?: string) {
+  const params = new URLSearchParams();
+  if (rootPath) {
+    params.set("rootPath", rootPath);
+  }
+  const query = params.toString();
+  return request<OpenClawRuntimeDiscovery>(`/openclaw/runtime${query ? `?${query}` : ""}`);
+}
+
+export async function getOpenClawSyncPlan(input: { rootPath?: string } = {}) {
+  return request<OpenClawSyncPlan>("/openclaw/sync/plan", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function applyOpenClawSync(input: { rootPath?: string } = {}) {
+  return request<OpenClawSyncApplyResult>("/openclaw/sync/apply", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function validateOpenClawSync(input: { rootPath?: string } = {}) {
+  return request<OpenClawValidationResult>("/openclaw/sync/validate", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function listModelProviders() {
+  return request<{ providers: ModelProviderRecord[] }>("/providers");
+}
+
+export async function saveModelProvider(input: ModelProviderInput) {
+  return request<ModelProviderRecord>("/providers", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function patchModelProvider(providerId: string, input: PatchModelProviderInput) {
+  return request<ModelProviderRecord>(`/providers/${encodeURIComponent(providerId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function verifyModelProvider(
+  providerId: string,
+  input: { apiKey?: string; model?: string } = {}
+) {
+  return request<ProviderVerificationResponse>(
+    `/providers/${encodeURIComponent(providerId)}/verify`,
+    {
+      method: "POST",
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function listAgentConfigs() {
+  return request<{ agents: AgentConfigRecord[] }>("/agents");
+}
+
+export async function seedDefaultAgentConfigs(input: SeedDefaultAgentsInput = {}) {
+  return request<{ agents: AgentConfigRecord[] }>("/agents/seed-defaults", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function saveAgentConfig(input: AgentConfigInput) {
+  return request<AgentConfigRecord>("/agents", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function patchAgentConfig(agentId: string, input: PatchAgentConfigInput) {
+  return request<AgentConfigRecord>(`/agents/${encodeURIComponent(agentId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function listSkills() {
+  return request<{ skills: SkillRegistryRecord[] }>("/skills");
+}
+
+export async function saveSkill(input: SkillRegistryInput) {
+  return request<SkillRegistryRecord>("/skills", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function patchSkill(skillId: string, input: Partial<SkillRegistryInput>) {
+  return request<SkillRegistryRecord>(`/skills/${encodeURIComponent(skillId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function listMcpServers() {
+  return request<{ servers: McpServerRecord[] }>("/mcp-servers");
+}
+
+export async function saveMcpServer(input: McpServerInput) {
+  return request<McpServerRecord>("/mcp-servers", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function patchMcpServer(serverId: string, input: Partial<McpServerInput>) {
+  return request<McpServerRecord>(`/mcp-servers/${encodeURIComponent(serverId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function checkMcpServer(serverId: string) {
+  return request<McpServerCheckResponse>(`/mcp-servers/${encodeURIComponent(serverId)}/check`, {
+    method: "POST",
+    body: "{}"
+  });
+}
+
+export async function listScheduledTasks(input: ListScheduledTasksInput = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  return request<ListScheduledTasksResponse>(`/schedules?${params.toString()}`);
+}
+
+export async function listDueScheduledTasks(input: { now?: string; limit?: number } = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  return request<DueScheduledTasksResponse>(`/schedules/due?${params.toString()}`);
+}
+
+export async function getScheduledTask(scheduleId: string) {
+  return request<ScheduledTaskRecord>(`/schedules/${encodeURIComponent(scheduleId)}`);
+}
+
+export async function saveScheduledTask(input: ScheduledTaskInput) {
+  return request<ScheduledTaskRecord>("/schedules", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function patchScheduledTask(
+  scheduleId: string,
+  input: Partial<ScheduledTaskInput>
+) {
+  return request<ScheduledTaskRecord>(`/schedules/${encodeURIComponent(scheduleId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function triggerScheduledTask(
+  scheduleId: string,
+  input: TriggerScheduledTaskInput = {}
+) {
+  return request<TriggerScheduledTaskResponse>(
+    `/schedules/${encodeURIComponent(scheduleId)}/trigger`,
+    {
+      method: "POST",
+      body: JSON.stringify(input)
+    }
+  );
 }
 
 export async function inspectWorkspace(rootPath: string) {

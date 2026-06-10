@@ -49,6 +49,34 @@ import {
   listSessions
 } from "../../../packages/db/src/runtime";
 import {
+  getAgentConfig,
+  getModelProvider,
+  listAgentConfigs,
+  listModelProviders,
+  patchAgentConfig,
+  patchModelProvider,
+  seedDefaultAgentConfigs,
+  upsertAgentConfig,
+  upsertModelProvider
+} from "../../../packages/db/src/config-registry";
+import {
+  getMcpServer,
+  listMcpServers,
+  listSkills,
+  patchMcpServer,
+  patchSkill,
+  upsertMcpServer,
+  upsertSkill
+} from "../../../packages/db/src/tool-registry";
+import {
+  getScheduledTask,
+  listDueScheduledTasks,
+  listScheduledTasks,
+  markScheduledTaskTriggered,
+  patchScheduledTask,
+  upsertScheduledTask
+} from "../../../packages/db/src/schedules";
+import {
   formatWorkspaceCommand,
   getWorkspaceGitStatus,
   inspectWorkspace,
@@ -64,7 +92,12 @@ import {
   EXPERIENCE_STATUSES,
   INGRESS_ORIGINS,
   JOB_STATUSES,
+  MCP_SERVER_STATUSES,
+  PROVIDER_VERIFICATION_STATUSES,
   ROUTING_MODES,
+  AGENT_SYNC_STATUSES,
+  SCHEDULE_TASK_STATUSES,
+  SCHEDULE_TYPES,
   TASK_PLAN_ITEM_STATUSES,
   TASK_PLAN_STATUSES,
   TOOL_APPROVAL_STATUSES,
@@ -74,6 +107,21 @@ import {
 import { launchDbos, startJobWorkflow } from "./dbos-runtime";
 import { ingressAdapters } from "./adapters";
 import { getRuntimeCapabilities } from "./capabilities";
+import { discoverOpenClawRuntime } from "./openclaw-runtime";
+import {
+  applyOpenClawSyncPlan,
+  buildOpenClawSyncPlan,
+  validateOpenClawSync
+} from "./openclaw-sync";
+import {
+  fingerprintSecret,
+  getProviderApiKeyStatus,
+  readProviderApiKey,
+  saveProviderApiKey
+} from "./local-secrets";
+import { verifyOpenAiCompatibleProvider } from "./provider-verification";
+import { checkMcpCommand } from "./mcp-diagnostics";
+import { getRuntimeDiagnostics } from "./runtime-diagnostics";
 
 const unstickModelCallSchema = z.object({
   jobId: z.string().min(1),
@@ -100,6 +148,145 @@ const runtimeLogsQuerySchema = z.object({
 const runtimeUsageQuerySchema = z.object({
   since: z.string().datetime({ offset: true }).optional(),
   until: z.string().datetime({ offset: true }).optional()
+});
+
+const runtimeDiagnosticsQuerySchema = z.object({
+  openClawRootPath: z.string().trim().min(1).max(2000).optional()
+});
+
+const openClawRuntimeQuerySchema = z.object({
+  rootPath: z.string().trim().min(1).max(2000).optional()
+});
+
+const openClawSyncSchema = z.object({
+  rootPath: z.string().trim().min(1).max(2000).optional()
+});
+
+const providerSchema = z.object({
+  id: z.string().trim().min(1).max(160).optional(),
+  displayName: z.string().trim().min(1).max(200),
+  baseUrl: z.string().trim().url().max(1000),
+  defaultModel: z.string().trim().min(1).max(300).nullable().optional(),
+  apiKey: z.string().min(1).max(10000).optional(),
+  verify: z.boolean().optional(),
+  metadata: z.record(z.unknown()).optional()
+});
+
+const patchProviderSchema = providerSchema.partial().extend({
+  verificationStatus: z.enum(PROVIDER_VERIFICATION_STATUSES).optional(),
+  lastError: z.string().trim().max(1000).nullable().optional()
+});
+
+const verifyProviderSchema = z.object({
+  apiKey: z.string().min(1).max(10000).optional(),
+  model: z.string().trim().min(1).max(300).optional()
+});
+
+const agentConfigSchema = z.object({
+  id: z.string().trim().min(1).max(160),
+  displayName: z.string().trim().min(1).max(200),
+  agentRole: z.string().trim().min(1).max(120),
+  required: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  providerId: z.string().trim().min(1).max(160).nullable().optional(),
+  model: z.string().trim().min(1).max(300).nullable().optional(),
+  apiKeyConfigured: z.boolean().optional(),
+  workspacePath: z.string().trim().min(1).max(2000).nullable().optional(),
+  promptTemplatePath: z.string().trim().min(1).max(2000).nullable().optional(),
+  tools: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
+  openclawSyncStatus: z.enum(AGENT_SYNC_STATUSES).optional(),
+  openclawAgentPath: z.string().trim().min(1).max(2000).nullable().optional(),
+  lastError: z.string().trim().max(1000).nullable().optional(),
+  metadata: z.record(z.unknown()).optional()
+});
+
+const patchAgentConfigSchema = agentConfigSchema.partial().omit({ id: true });
+
+const seedDefaultAgentsSchema = z.object({
+  panelAgentName: z.string().trim().min(1).max(200).optional(),
+  providerId: z.string().trim().min(1).max(160).nullable().optional(),
+  model: z.string().trim().min(1).max(300).nullable().optional()
+});
+
+const skillSchema = z.object({
+  id: z.string().trim().min(1).max(160).optional(),
+  name: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(2000).nullable().optional(),
+  enabled: z.boolean().optional(),
+  source: z.string().trim().min(1).max(120).optional(),
+  config: z.record(z.unknown()).optional(),
+  diagnostics: z.record(z.unknown()).optional()
+});
+
+const patchSkillSchema = skillSchema.partial();
+
+const mcpServerSchema = z.object({
+  id: z.string().trim().min(1).max(160).optional(),
+  name: z.string().trim().min(1).max(200),
+  command: z.string().trim().min(1).max(500),
+  args: z.array(z.string().max(2000)).max(100).optional(),
+  envKeys: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
+  enabled: z.boolean().optional(),
+  status: z.enum(MCP_SERVER_STATUSES).optional(),
+  lastError: z.string().trim().max(1000).nullable().optional(),
+  config: z.record(z.unknown()).optional()
+});
+
+const patchMcpServerSchema = mcpServerSchema.partial();
+
+const scheduleBaseSchema = z.object({
+  id: z.string().trim().min(1).max(160).optional(),
+  title: z.string().trim().min(1).max(200),
+  prompt: z.string().trim().min(1).max(8000),
+  scheduleType: z.enum(SCHEDULE_TYPES).optional(),
+  enabled: z.boolean().optional(),
+  workspacePath: z.string().trim().min(1).max(2000).nullable().optional(),
+  routingMode: z.enum(ROUTING_MODES).optional(),
+  maxModelCalls: z.number().int().min(1).max(100).optional(),
+  providerId: z.string().trim().min(1).max(160).nullable().optional(),
+  agentId: z.string().trim().min(1).max(160).nullable().optional(),
+  runAt: z.string().datetime({ offset: true }).nullable().optional(),
+  intervalSeconds: z.number().int().min(60).max(60 * 60 * 24 * 365).nullable().optional(),
+  nextRunAt: z.string().datetime({ offset: true }).nullable().optional(),
+  status: z.enum(SCHEDULE_TASK_STATUSES).optional(),
+  lastError: z.string().trim().max(1000).nullable().optional(),
+  metadata: z.record(z.unknown()).optional()
+});
+
+const scheduleSchema = scheduleBaseSchema.superRefine((value, context) => {
+  if (value.scheduleType === "once" && !value.runAt) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "runAt_required_for_once_schedule",
+      path: ["runAt"]
+    });
+  }
+  if (value.scheduleType === "interval" && !value.intervalSeconds) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "intervalSeconds_required_for_interval_schedule",
+      path: ["intervalSeconds"]
+    });
+  }
+});
+
+const patchScheduleSchema = scheduleBaseSchema.partial();
+
+const listSchedulesQuerySchema = z.object({
+  status: z.enum(SCHEDULE_TASK_STATUSES).optional(),
+  enabled: z.coerce.boolean().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional()
+});
+
+const dueSchedulesQuerySchema = z.object({
+  now: z.string().datetime({ offset: true }).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional()
+});
+
+const triggerScheduleSchema = z.object({
+  startWorkflow: z.boolean().optional().default(true),
+  force: z.boolean().optional().default(false),
+  requesterId: z.string().trim().min(1).max(200).optional()
 });
 
 const listSessionsQuerySchema = z.object({
@@ -276,6 +463,16 @@ function normalizeApprovalTarget(target: string | null) {
 
 function normalizeApprovalCommand(command: string | null) {
   return command?.trim() || null;
+}
+
+function stableIdFromName(prefix: string, value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `${prefix}-${slug || "default"}`;
 }
 
 const listJobsQuerySchema = z.object({
@@ -489,6 +686,490 @@ async function main() {
 
   app.get("/runtime/capabilities", (_request, response) => {
     response.json(getRuntimeCapabilities());
+  });
+
+  app.get("/runtime/diagnostics", async (request, response, next) => {
+    try {
+      const query = runtimeDiagnosticsQuerySchema.parse(request.query);
+      response.json(await getRuntimeDiagnostics(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/openclaw/runtime", async (request, response, next) => {
+    try {
+      const query = openClawRuntimeQuerySchema.parse(request.query);
+      response.json(await discoverOpenClawRuntime(query.rootPath));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/openclaw/sync/plan", async (request, response, next) => {
+    try {
+      const input = openClawSyncSchema.parse(request.body ?? {});
+      const plan = await buildOpenClawSyncPlan(input);
+      if (!plan) {
+        response.status(404).json({ error: "openclaw_runtime_not_found" });
+        return;
+      }
+      response.json(plan);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/openclaw/sync/apply", async (request, response, next) => {
+    try {
+      const input = openClawSyncSchema.parse(request.body ?? {});
+      const result = await applyOpenClawSyncPlan(input);
+      if (!result) {
+        response.status(404).json({ error: "openclaw_runtime_not_found" });
+        return;
+      }
+
+      await Promise.all(
+        result.plan.agents.map((agent) =>
+          patchAgentConfig(agent.honeycombAgentId, {
+            openclawSyncStatus: agent.status === "ready" ? "synced" : "failed",
+            openclawAgentPath: agent.targetAgentPromptPath,
+            lastSyncedAt: result.appliedAt,
+            lastError: agent.status === "ready" ? null : "missing_template"
+          })
+        )
+      );
+
+      response.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/openclaw/sync/validate", async (request, response, next) => {
+    try {
+      const input = openClawSyncSchema.parse(request.body ?? {});
+      const result = await validateOpenClawSync(input);
+      if (!result) {
+        response.status(404).json({ error: "openclaw_runtime_not_found" });
+        return;
+      }
+      response.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/providers", async (_request, response, next) => {
+    try {
+      response.json({ providers: await listModelProviders() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/providers", async (request, response, next) => {
+    try {
+      const input = providerSchema.parse(request.body ?? {});
+      const providerId = input.id?.trim() || stableIdFromName("provider", input.displayName);
+      const keyStatus = input.apiKey
+        ? await saveProviderApiKey(providerId, input.apiKey)
+        : { configured: false, fingerprint: null };
+      let verificationStatus: "unknown" | "succeeded" | "failed" = "unknown";
+      let lastVerifiedAt: string | null = null;
+      let lastError: string | null = null;
+
+      if (input.verify) {
+        const apiKey = input.apiKey ?? await readProviderApiKey(providerId);
+        const model = input.defaultModel;
+        if (!apiKey || !model) {
+          response.status(400).json({ error: "provider_api_key_and_model_required_for_verify" });
+          return;
+        }
+        const verification = await verifyOpenAiCompatibleProvider({
+          baseUrl: input.baseUrl,
+          model,
+          apiKey
+        });
+        verificationStatus = verification.status;
+        lastVerifiedAt = verification.checkedAt;
+        lastError = verification.message;
+      }
+
+      const provider = await upsertModelProvider({
+        id: providerId,
+        displayName: input.displayName,
+        baseUrl: input.baseUrl,
+        defaultModel: input.defaultModel,
+        apiKeyConfigured: keyStatus.configured,
+        apiKeyFingerprint: keyStatus.fingerprint,
+        verificationStatus,
+        lastVerifiedAt,
+        lastError,
+        metadata: input.metadata
+      });
+      response.status(201).json(provider);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/providers/:providerId", async (request, response, next) => {
+    try {
+      const current = await getModelProvider(request.params.providerId);
+      if (!current) {
+        response.status(404).json({ error: "provider_not_found" });
+        return;
+      }
+      const input = patchProviderSchema.parse(request.body ?? {});
+      const keyStatus = input.apiKey
+        ? await saveProviderApiKey(current.id, input.apiKey)
+        : await getProviderApiKeyStatus(current.id);
+      const patched = await patchModelProvider(current.id, {
+        displayName: input.displayName,
+        baseUrl: input.baseUrl,
+        defaultModel: input.defaultModel,
+        apiKeyConfigured: input.apiKey ? true : keyStatus.configured || current.apiKeyConfigured,
+        apiKeyFingerprint: input.apiKey
+          ? fingerprintSecret(input.apiKey)
+          : keyStatus.fingerprint ?? current.apiKeyFingerprint,
+        verificationStatus: input.verificationStatus,
+        lastError: input.lastError,
+        metadata: input.metadata
+      });
+      response.json(patched);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/providers/:providerId/verify", async (request, response, next) => {
+    try {
+      const provider = await getModelProvider(request.params.providerId);
+      if (!provider) {
+        response.status(404).json({ error: "provider_not_found" });
+        return;
+      }
+      const input = verifyProviderSchema.parse(request.body ?? {});
+      const apiKey = input.apiKey ?? await readProviderApiKey(provider.id);
+      const model = input.model ?? provider.defaultModel;
+      if (!apiKey || !model) {
+        response.status(400).json({ error: "provider_api_key_and_model_required_for_verify" });
+        return;
+      }
+
+      if (input.apiKey) {
+        await saveProviderApiKey(provider.id, input.apiKey);
+      }
+
+      const verification = await verifyOpenAiCompatibleProvider({
+        baseUrl: provider.baseUrl,
+        model,
+        apiKey
+      });
+      const patched = await patchModelProvider(provider.id, {
+        apiKeyConfigured: true,
+        apiKeyFingerprint: fingerprintSecret(apiKey),
+        verificationStatus: verification.status,
+        lastVerifiedAt: verification.checkedAt,
+        lastError: verification.message
+      });
+      response.json({
+        provider: patched,
+        verification
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/agents", async (_request, response, next) => {
+    try {
+      response.json({ agents: await listAgentConfigs() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/agents/seed-defaults", async (request, response, next) => {
+    try {
+      const input = seedDefaultAgentsSchema.parse(request.body ?? {});
+      const provider = input.providerId ? await getModelProvider(input.providerId) : null;
+      if (input.providerId && !provider) {
+        response.status(404).json({ error: "provider_not_found" });
+        return;
+      }
+      const keyStatus = provider ? await getProviderApiKeyStatus(provider.id) : null;
+      const agents = await seedDefaultAgentConfigs({
+        panelAgentName: input.panelAgentName,
+        providerId: provider?.id ?? input.providerId,
+        model: input.model ?? provider?.defaultModel ?? null,
+        apiKeyConfigured: keyStatus?.configured ?? provider?.apiKeyConfigured ?? false,
+        apiKeyFingerprint: keyStatus?.fingerprint ?? provider?.apiKeyFingerprint ?? null
+      });
+      response.status(201).json({ agents });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/agents", async (request, response, next) => {
+    try {
+      const input = agentConfigSchema.parse(request.body ?? {});
+      if (input.providerId && !(await getModelProvider(input.providerId))) {
+        response.status(404).json({ error: "provider_not_found" });
+        return;
+      }
+      response.status(201).json(await upsertAgentConfig(input));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/agents/:agentId", async (request, response, next) => {
+    try {
+      const input = patchAgentConfigSchema.parse(request.body ?? {});
+      if (input.providerId && !(await getModelProvider(input.providerId))) {
+        response.status(404).json({ error: "provider_not_found" });
+        return;
+      }
+      const patched = await patchAgentConfig(request.params.agentId, input);
+      if (!patched) {
+        response.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      response.json(patched);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/skills", async (_request, response, next) => {
+    try {
+      response.json({ skills: await listSkills() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/skills", async (request, response, next) => {
+    try {
+      const input = skillSchema.parse(request.body ?? {});
+      response.status(201).json(await upsertSkill(input));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/skills/:skillId", async (request, response, next) => {
+    try {
+      const input = patchSkillSchema.parse(request.body ?? {});
+      const skill = await patchSkill(request.params.skillId, input);
+      if (!skill) {
+        response.status(404).json({ error: "skill_not_found" });
+        return;
+      }
+      response.json(skill);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/mcp-servers", async (_request, response, next) => {
+    try {
+      response.json({ servers: await listMcpServers() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/mcp-servers", async (request, response, next) => {
+    try {
+      const input = mcpServerSchema.parse(request.body ?? {});
+      response.status(201).json(await upsertMcpServer(input));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/mcp-servers/:serverId", async (request, response, next) => {
+    try {
+      const input = patchMcpServerSchema.parse(request.body ?? {});
+      const server = await patchMcpServer(request.params.serverId, input);
+      if (!server) {
+        response.status(404).json({ error: "mcp_server_not_found" });
+        return;
+      }
+      response.json(server);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/mcp-servers/:serverId/check", async (request, response, next) => {
+    try {
+      const server = await getMcpServer(request.params.serverId);
+      if (!server) {
+        response.status(404).json({ error: "mcp_server_not_found" });
+        return;
+      }
+      const check = await checkMcpCommand(server.command);
+      const patched = await patchMcpServer(server.id, {
+        status: check.status,
+        lastCheckedAt: check.checkedAt,
+        lastError: check.error,
+        config: {
+          ...server.config,
+          lastCommandCheck: {
+            resolvedPath: check.resolvedPath
+          }
+        }
+      });
+      response.json({
+        server: patched,
+        check
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/schedules", async (request, response, next) => {
+    try {
+      const query = listSchedulesQuerySchema.parse(request.query);
+      response.json(await listScheduledTasks(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/schedules/due", async (request, response, next) => {
+    try {
+      const query = dueSchedulesQuerySchema.parse(request.query);
+      const now = query.now ? new Date(query.now) : new Date();
+      response.json({
+        checkedAt: now.toISOString(),
+        schedules: await listDueScheduledTasks(now, query.limit)
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/schedules/:scheduleId", async (request, response, next) => {
+    try {
+      const schedule = await getScheduledTask(request.params.scheduleId);
+      if (!schedule) {
+        response.status(404).json({ error: "schedule_not_found" });
+        return;
+      }
+      response.json(schedule);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/schedules", async (request, response, next) => {
+    try {
+      const input = scheduleSchema.parse(request.body ?? {});
+      if (input.providerId && !(await getModelProvider(input.providerId))) {
+        response.status(404).json({ error: "provider_not_found" });
+        return;
+      }
+      if (input.agentId && !(await getAgentConfig(input.agentId))) {
+        response.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      response.status(201).json(await upsertScheduledTask(input));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/schedules/:scheduleId", async (request, response, next) => {
+    try {
+      const input = patchScheduleSchema.parse(request.body ?? {});
+      if (input.providerId && !(await getModelProvider(input.providerId))) {
+        response.status(404).json({ error: "provider_not_found" });
+        return;
+      }
+      if (input.agentId && !(await getAgentConfig(input.agentId))) {
+        response.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      const schedule = await patchScheduledTask(request.params.scheduleId, input);
+      if (!schedule) {
+        response.status(404).json({ error: "schedule_not_found" });
+        return;
+      }
+      response.json(schedule);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/schedules/:scheduleId/trigger", async (request, response, next) => {
+    try {
+      const input = triggerScheduleSchema.parse(request.body ?? {});
+      const schedule = await getScheduledTask(request.params.scheduleId);
+      if (!schedule) {
+        response.status(404).json({ error: "schedule_not_found" });
+        return;
+      }
+      if (!schedule.enabled && !input.force) {
+        response.status(409).json({ error: "schedule_disabled", schedule });
+        return;
+      }
+
+      const job = await createJob({
+        rawPrompt: schedule.prompt,
+        workdir: schedule.workspacePath ?? undefined,
+        ingressOrigin: "http",
+        routingMode: schedule.routingMode,
+        maxModelCalls: schedule.maxModelCalls,
+        requesterId: input.requesterId ?? `schedule:${schedule.id}`
+      });
+      await appendJobEvent(
+        job.id,
+        "schedule.triggered",
+        {
+          scheduleId: schedule.id,
+          scheduleType: schedule.scheduleType,
+          nextRunAt: schedule.nextRunAt
+        },
+        {
+          actor: "scheduler"
+        }
+      );
+
+      let workflowId: string | null = null;
+      try {
+        workflowId = input.startWorkflow ? await startJobWorkflow(job.id) : null;
+      } catch (error) {
+        await markScheduledTaskTriggered({
+          scheduleId: schedule.id,
+          jobId: job.id,
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      }
+
+      const updatedSchedule = await markScheduledTaskTriggered({
+        scheduleId: schedule.id,
+        jobId: job.id,
+        status: input.startWorkflow ? "queued" : "idle"
+      });
+
+      response.status(201).json({
+        ok: true,
+        schedule: updatedSchedule,
+        job,
+        workflowId
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get("/workspaces/inspect", async (request, response, next) => {
