@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import {
   adoptExperience,
+  approveToolApproval,
   cancelJob,
   createJob,
   getHealth,
@@ -34,7 +35,9 @@ import {
   getJobTimeline,
   listExperiences,
   listJobs,
+  listToolApprovals,
   rejectExperience,
+  rejectToolApproval,
   type ExperienceListResponse,
   type ExperienceRecord,
   type ExperienceStatus,
@@ -42,7 +45,8 @@ import {
   type JobStatus,
   type JobTimeline,
   type ListJobsResponse,
-  type RoutingMode
+  type RoutingMode,
+  type ToolApprovalRecord
 } from "./api";
 import { FirstRunPanel, type FirstRunFlow } from "./firstRun";
 import { HoneycombLogo } from "./brand";
@@ -52,7 +56,7 @@ type ApiState = "checking" | "online" | "offline";
 type JobStatusFilter = "all" | "running" | "waiting_for_human" | "cancelled";
 type JobTimeFilter = "all" | "24h" | "7d" | "custom";
 type Language = "en" | "zh";
-type AppView = "dashboard" | "setup" | "jobs" | "agents" | "models" | "memory" | "settings";
+type AppView = "dashboard" | "setup" | "jobs" | "approvals" | "agents" | "models" | "memory" | "settings";
 type TourAnchor = "activity" | "dashboard" | "setup" | "jobs" | "settings";
 
 type SecurityRecord = {
@@ -285,6 +289,7 @@ const translations = {
     consoleTab: "Console",
     dashboard: "Dashboard",
     jobsView: "Jobs",
+    approvalsView: "Approvals",
     agentsView: "Agents",
     modelsView: "Models",
     memoryView: "Memory",
@@ -314,6 +319,23 @@ const translations = {
     latestItems: "latest items",
     complete: "complete",
     noTimelineEvents: "No timeline events.",
+    approvalQueueTitle: "Tool approval queue",
+    approvalQueueHint: "Review higher-risk tool requests before agents write files, run commands, or use external tools.",
+    pendingApprovals: "Pending approvals",
+    noPendingApprovals: "No pending approvals.",
+    approvalRisk: "Risk",
+    approvalTool: "Tool",
+    approvalAction: "Action",
+    approvalTarget: "Target",
+    approvalCommand: "Command",
+    approvalReason: "Reason",
+    approvalRequestedBy: "Requested by",
+    approve: "Approve",
+    reject: "Reject",
+    approvalApproved: "Approval granted.",
+    approvalRejected: "Approval rejected.",
+    approvalLoadFailed: "Could not load approvals.",
+    approvalDecisionFailed: "Could not update approval.",
     runningJobs: "Running jobs",
     totalJobs: "Total jobs",
     latestJob: "Latest job",
@@ -498,6 +520,7 @@ const translations = {
     consoleTab: "控制台",
     dashboard: "仪表盘",
     jobsView: "任务",
+    approvalsView: "审批",
     agentsView: "Agent",
     modelsView: "模型",
     memoryView: "记忆",
@@ -527,6 +550,23 @@ const translations = {
     latestItems: "最新事件",
     complete: "完整",
     noTimelineEvents: "没有时间线事件。",
+    approvalQueueTitle: "工具审批队列",
+    approvalQueueHint: "在 agent 写文件、运行命令或调用外部工具前，先由你确认高风险请求。",
+    pendingApprovals: "待审批",
+    noPendingApprovals: "当前没有待审批请求。",
+    approvalRisk: "风险",
+    approvalTool: "工具",
+    approvalAction: "动作",
+    approvalTarget: "目标",
+    approvalCommand: "命令",
+    approvalReason: "原因",
+    approvalRequestedBy: "发起者",
+    approve: "批准",
+    reject: "拒绝",
+    approvalApproved: "已批准该请求。",
+    approvalRejected: "已拒绝该请求。",
+    approvalLoadFailed: "无法加载审批队列。",
+    approvalDecisionFailed: "无法更新审批状态。",
     runningJobs: "运行中任务",
     totalJobs: "任务总数",
     latestJob: "最近任务",
@@ -721,6 +761,7 @@ function getInitialView(): AppView {
     storedView === "dashboard" ||
     storedView === "setup" ||
     storedView === "jobs" ||
+    storedView === "approvals" ||
     storedView === "agents" ||
     storedView === "models" ||
     storedView === "memory" ||
@@ -754,6 +795,18 @@ function statusTone(status: JobStatus) {
   if (status === "failed" || status === "cancelled") return "danger";
   if (status === "waiting_for_human") return "warn";
   return "active";
+}
+
+function riskTone(riskLevel: ToolApprovalRecord["riskLevel"]) {
+  if (riskLevel === "critical" || riskLevel === "high") return "danger";
+  if (riskLevel === "medium") return "warn";
+  return "success";
+}
+
+function compactJson(value: Record<string, unknown>) {
+  const keys = Object.keys(value);
+  if (keys.length === 0) return "";
+  return JSON.stringify(value, null, 2);
 }
 
 function inferRoutingModeForTask(task: string): RoutingMode {
@@ -1134,6 +1187,10 @@ function App() {
   const [memoryBusy, setMemoryBusy] = useState(false);
   const [memoryError, setMemoryError] = useState("");
   const [memoryMessage, setMemoryMessage] = useState("");
+  const [approvals, setApprovals] = useState<ToolApprovalRecord[]>([]);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalError, setApprovalError] = useState("");
+  const [approvalMessage, setApprovalMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetFlow, setResetFlow] = useState<FirstRunFlow | null>(null);
@@ -1220,6 +1277,7 @@ function App() {
     { id: "dashboard" as const, icon: Gauge, label: copy.dashboard, group: copy.navGroups.operate },
     { id: "setup" as const, icon: Sparkles, label: copy.setupTab, group: copy.navGroups.operate },
     { id: "jobs" as const, icon: MessageSquare, label: copy.jobsView, group: copy.navGroups.operate },
+    { id: "approvals" as const, icon: ShieldQuestion, label: copy.approvalsView, group: copy.navGroups.operate },
     { id: "agents" as const, icon: Bot, label: copy.agentsView, group: copy.navGroups.build },
     { id: "models" as const, icon: SlidersHorizontal, label: copy.modelsView, group: copy.navGroups.build },
     { id: "memory" as const, icon: History, label: copy.memoryView, group: copy.navGroups.build }
@@ -1430,6 +1488,31 @@ function App() {
     const response = await listExperiences(experienceFilter === "all" ? undefined : experienceFilter);
     setExperiences(response.experiences);
     setExperienceSummary(response.summary);
+  }
+
+  async function refreshApprovals() {
+    const response = await listToolApprovals({ status: "pending", limit: 100 });
+    setApprovals(response.approvals);
+  }
+
+  async function decideApproval(approvalId: string, decision: "approve" | "reject") {
+    setApprovalBusy(true);
+    setApprovalError("");
+    setApprovalMessage("");
+    try {
+      if (decision === "approve") {
+        await approveToolApproval(approvalId, { decidedBy: "desktop-user" });
+        setApprovalMessage(copy.approvalApproved);
+      } else {
+        await rejectToolApproval(approvalId, { decidedBy: "desktop-user" });
+        setApprovalMessage(copy.approvalRejected);
+      }
+      await refreshApprovals();
+    } catch (caught) {
+      setApprovalError(caught instanceof Error ? caught.message : copy.approvalDecisionFailed);
+    } finally {
+      setApprovalBusy(false);
+    }
   }
 
   async function changeExperienceStatus(
@@ -1775,6 +1858,34 @@ function App() {
     );
   }, [activeView, apiState, experienceFilter]);
 
+  useEffect(() => {
+    if (activeView !== "approvals" || apiState !== "online") return;
+    let cancelled = false;
+
+    async function loadApprovals() {
+      try {
+        const response = await listToolApprovals({ status: "pending", limit: 100 });
+        if (!cancelled) {
+          setApprovals(response.approvals);
+          setApprovalError("");
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setApprovalError(caught instanceof Error ? caught.message : copy.approvalLoadFailed);
+        }
+      }
+    }
+
+    void loadApprovals();
+    const interval = window.setInterval(() => {
+      void loadApprovals();
+    }, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeView, apiState, copy.approvalLoadFailed]);
+
   if (locked && securityRecord) {
     const canRecover = hasRecoveryQuestion(securityRecord);
     return (
@@ -2055,6 +2166,120 @@ function App() {
             </article>
           </div>
           {workbenchMessage ? <p className="successMessage">{workbenchMessage}</p> : null}
+        </section>
+      </section>
+    );
+  }
+
+  function renderApprovals() {
+    return (
+      <section className="deskPage approvalsPage">
+        <section className="pageHero compactHero">
+          <div>
+            <p className="eyebrow">
+              <ShieldQuestion size={15} aria-hidden="true" />
+              {copy.pendingApprovals}
+            </p>
+            <h1>{copy.approvalQueueTitle}</h1>
+            <p>{copy.approvalQueueHint}</p>
+          </div>
+          <div className="heroActions">
+            <span className={`status ${apiState}`}>{statusText}</span>
+            <button
+              className="secondaryButton compactButton"
+              type="button"
+              onClick={() => refreshApprovals().catch((caught) => setApprovalError(caught instanceof Error ? caught.message : copy.approvalLoadFailed))}
+              disabled={apiState !== "online" || approvalBusy}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              {copy.refresh}
+            </button>
+          </div>
+        </section>
+
+        {approvalMessage ? <p className="successMessage">{approvalMessage}</p> : null}
+        {approvalError ? <p className="error">{approvalError}</p> : null}
+
+        <section className="approvalQueue">
+          {approvals.length ? (
+            approvals.map((approval) => {
+              const inputJson = compactJson(approval.input);
+              const policyJson = compactJson(approval.policy);
+              return (
+                <article className="approvalCard" key={approval.id}>
+                  <div className="approvalCardHeader">
+                    <div>
+                      <strong>{approval.toolName}</strong>
+                      <span>{approval.id}</span>
+                    </div>
+                    <em className={`riskPill ${riskTone(approval.riskLevel)}`}>
+                      {copy.approvalRisk}: {approval.riskLevel}
+                    </em>
+                  </div>
+
+                  <dl className="approvalDetails">
+                    <div>
+                      <dt>{copy.approvalAction}</dt>
+                      <dd>{approval.actionType}</dd>
+                    </div>
+                    <div>
+                      <dt>{copy.approvalTarget}</dt>
+                      <dd>{approval.target || "-"}</dd>
+                    </div>
+                    <div>
+                      <dt>{copy.approvalCommand}</dt>
+                      <dd>{approval.command || "-"}</dd>
+                    </div>
+                    <div>
+                      <dt>{copy.approvalRequestedBy}</dt>
+                      <dd>{approval.agentId} / {approval.requesterActor}</dd>
+                    </div>
+                    <div className="wide">
+                      <dt>{copy.approvalReason}</dt>
+                      <dd>{approval.reason || "-"}</dd>
+                    </div>
+                  </dl>
+
+                  {inputJson || policyJson ? (
+                    <div className="approvalPayloads">
+                      {inputJson ? (
+                        <pre aria-label="approval input">{inputJson}</pre>
+                      ) : null}
+                      {policyJson ? (
+                        <pre aria-label="approval policy">{policyJson}</pre>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="approvalActions">
+                    <button
+                      className="secondaryButton"
+                      type="button"
+                      disabled={approvalBusy}
+                      onClick={() => decideApproval(approval.id, "reject")}
+                    >
+                      <X size={15} aria-hidden="true" />
+                      {copy.reject}
+                    </button>
+                    <button
+                      className="primaryButton"
+                      type="button"
+                      disabled={approvalBusy}
+                      onClick={() => decideApproval(approval.id, "approve")}
+                    >
+                      <CheckCircle2 size={15} aria-hidden="true" />
+                      {copy.approve}
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+          ) : (
+            <div className="deskPanel emptyApprovalPanel">
+              <ShieldQuestion size={28} aria-hidden="true" />
+              <p>{copy.noPendingApprovals}</p>
+            </div>
+          )}
         </section>
       </section>
     );
@@ -2946,6 +3171,7 @@ function App() {
     }
     if (activeView === "setup") return renderDashboard();
     if (activeView === "jobs") return renderJobs();
+    if (activeView === "approvals") return renderApprovals();
     if (activeView === "agents") return renderAgents();
     if (activeView === "models") return renderModels();
     if (activeView === "memory") return renderMemory();

@@ -1,5 +1,22 @@
 const API_BASE = import.meta.env.VITE_ORCHESTRATOR_URL ?? "http://localhost:3000";
 
+function appendSearchParams(
+  params: URLSearchParams,
+  input: Record<string, unknown>,
+  options: { skip?: string[] } = {}
+) {
+  const skip = new Set(options.skip ?? []);
+  for (const [key, value] of Object.entries(input)) {
+    if (skip.has(key) || value === undefined || value === null) {
+      continue;
+    }
+    if (typeof value === "string" && value === "") {
+      continue;
+    }
+    params.set(key, String(value));
+  }
+}
+
 export type JobStatus =
   | "created"
   | "queued"
@@ -1059,11 +1076,7 @@ export async function getHealth() {
 export async function listJobs(input: number | ListJobsInput = 50) {
   const options = typeof input === "number" ? { limit: input } : input;
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(options)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, options);
   return request<ListJobsResponse>(`/jobs?${params.toString()}`);
 }
 
@@ -1126,21 +1139,13 @@ export async function listExperiences(status?: ExperienceStatus, limit = 100) {
 
 export async function listRuntimeLogs(input: ListRuntimeLogsInput = {}) {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input);
   return request<RuntimeLogsResponse>(`/runtime/logs?${params.toString()}`);
 }
 
 export async function getRuntimeUsage(input: RuntimeUsageInput = {}) {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input);
   return request<RuntimeUsageResponse>(`/runtime/usage?${params.toString()}`);
 }
 
@@ -1288,21 +1293,13 @@ export async function checkMcpServer(serverId: string) {
 
 export async function listScheduledTasks(input: ListScheduledTasksInput = {}) {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input);
   return request<ListScheduledTasksResponse>(`/schedules?${params.toString()}`);
 }
 
 export async function listDueScheduledTasks(input: { now?: string; limit?: number } = {}) {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input);
   return request<DueScheduledTasksResponse>(`/schedules/due?${params.toString()}`);
 }
 
@@ -1347,11 +1344,7 @@ export async function inspectWorkspace(rootPath: string) {
 
 export async function listWorkspaceFiles(input: WorkspaceFilesInput) {
   const params = new URLSearchParams({ rootPath: input.rootPath });
-  for (const [key, value] of Object.entries(input)) {
-    if (key !== "rootPath" && value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input, { skip: ["rootPath"] });
   return request<WorkspaceFilesResponse>(`/workspaces/files?${params.toString()}`);
 }
 
@@ -1384,11 +1377,7 @@ export async function getWorkspaceGitStatus(rootPath: string) {
 
 export async function listToolApprovals(input: ListToolApprovalsInput = {}) {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input);
   return request<ListToolApprovalsResponse>(`/approvals?${params.toString()}`);
 }
 
@@ -1457,11 +1446,7 @@ export async function consumeToolApproval(
 
 export async function listSessions(input: ListSessionsInput = {}) {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input);
   return request<SessionListResponse>(`/sessions?${params.toString()}`);
 }
 
@@ -1475,11 +1460,7 @@ export function createSessionEventsSource(
   input: SessionEventsStreamInput = {}
 ) {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input);
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return new EventSource(
@@ -1529,11 +1510,7 @@ export async function compressSession(sessionId: string, input: SessionCompressi
 
 export async function listPlans(input: ListPlansInput = {}) {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
-    }
-  }
+  appendSearchParams(params, input);
   return request<ListPlansResponse>(`/plans?${params.toString()}`);
 }
 

@@ -174,14 +174,14 @@ const capabilities: RuntimeCapability[] = [
       "Approval table",
       "Risk levels",
       "Pending/approved/rejected/cancelled/consumed/expired states",
-      "Session event emission"
+      "Session event emission",
+      "Desktop pending approval queue with approve/reject controls"
     ],
     missing: [
-      "Desktop approval queue UI",
       "Per-tool approval policy registry"
     ],
     nextActions: [
-      "Build desktop approval queue and then add policy defaults per tool"
+      "Add policy defaults per tool and approval coverage for MCP/Web calls"
     ]
   },
   {
@@ -320,7 +320,7 @@ const capabilities: RuntimeCapability[] = [
     id: "schedules",
     title: "Scheduled tasks",
     status: "partial",
-    summary: "One-time, daily, interval, and manual tasks can be persisted and manually triggered into real jobs; background scheduling is not complete.",
+    summary: "One-time, daily, interval, and manual tasks can be persisted, manually triggered, and picked up by the worker scheduler; model/reasoning policy binding is still incomplete.",
     routes: [
       "GET /schedules",
       "GET /schedules/due",
@@ -333,15 +333,15 @@ const capabilities: RuntimeCapability[] = [
       "Schedule table",
       "Schedule CRUD API",
       "Next-run calculation for once/daily/interval tasks",
-      "Manual trigger path that creates a real job"
+      "Manual trigger path that creates a real job",
+      "Worker scheduler runner",
+      "Startup catch-up for overdue tasks"
     ],
     missing: [
-      "Scheduler runner",
-      "Wake/startup catch-up behavior",
       "Workspace/model/reasoning configuration per schedule"
     ],
     nextActions: [
-      "Add scheduler worker loop and wake-on-startup catch-up"
+      "Bind schedule execution to provider/agent routing and product scheduling UI"
     ]
   },
   {
@@ -407,9 +407,8 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     summary,
     capabilities,
     recommendedNext: [
-      "Desktop approval queue UI",
       "Approval-gated MCP/Web tool calls",
-      "Scheduler worker loop",
+      "Schedule configuration UI",
       "Worker routing through provider and agent registries"
     ]
   };

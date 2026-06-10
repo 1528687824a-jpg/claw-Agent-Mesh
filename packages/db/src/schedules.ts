@@ -206,6 +206,34 @@ export async function listDueScheduledTasks(
   return result.rows.map(toScheduledTaskRecord);
 }
 
+export async function claimDueScheduledTasks(
+  now = new Date(),
+  limit = 10
+): Promise<ScheduledTaskRecord[]> {
+  const result = await pool.query(
+    `with due as (
+       select id
+       from agent.scheduled_tasks
+       where enabled = true
+         and next_run_at is not null
+         and next_run_at <= $1::timestamptz
+         and status <> 'running'
+       order by next_run_at asc, id asc
+       limit $2
+       for update skip locked
+     )
+     update agent.scheduled_tasks st
+     set status = 'running',
+         last_error = null,
+         updated_at = now()
+     from due
+     where st.id = due.id
+     returning st.*`,
+    [now.toISOString(), Math.min(Math.max(limit, 1), 100)]
+  );
+  return result.rows.map(toScheduledTaskRecord);
+}
+
 export async function getScheduledTask(scheduleId: string): Promise<ScheduledTaskRecord | null> {
   const result = await pool.query(`select * from agent.scheduled_tasks where id = $1`, [
     scheduleId

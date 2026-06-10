@@ -40,6 +40,7 @@ changes land.
    - Tool approval request table.
    - Pending/approved/rejected/cancelled/consumed/expired state machine.
    - Approval events are written into the session event stream.
+   - Desktop pending approval queue can approve or reject requests.
 
 7. Approval-gated local tools
    - Workspace file write: protected by approval target matching.
@@ -57,6 +58,8 @@ changes land.
    - One-time, daily, interval, and manual schedule metadata.
    - Due-task listing.
    - Manual trigger creates a real job.
+   - Worker scheduler runner claims due tasks and catches up overdue tasks on
+     worker startup.
 
 10. Packaging/layout checks
    - Package layout audit script.
@@ -108,8 +111,8 @@ changes land.
 6. Scheduled tasks
    - Durable schedule table and CRUD API exist.
    - Manual trigger can create a real job.
-   - Background scheduler runner, wake-on-startup catch-up, and selected
-     model/workspace execution policies are still incomplete.
+   - Worker scheduler runner and startup catch-up exist.
+   - Selected model/workspace execution policies are still incomplete.
 
 7. Mobile and IM background agent
    - Feishu webhook exists as ingress.
@@ -118,8 +121,9 @@ changes land.
 
 8. Desktop approval UI
    - Backend supports approvals and approved tool execution.
-   - Desktop still needs an approval queue, modal, risk text, reject/approve
-     controls, and SSE refresh integration.
+   - Desktop pending approval queue, risk text, detail view, and reject/approve
+     controls exist.
+   - SSE refresh and policy editing are still incomplete.
 
 9. Installer and runtime diagnostics
    - Windows local launcher is repaired.
@@ -174,6 +178,8 @@ changes land.
    - Queue, detail, approve/reject/cancel.
    - Risk level text.
    - Live SSE updates.
+   - Status: partial done. Pending queue, detail cards, and approve/reject
+     controls exist; SSE refresh and policy editing are still missing.
 
 7. Add Skills/MCP registry.
    - CRUD skills and MCP servers.
@@ -192,9 +198,9 @@ changes land.
 9. Add scheduled tasks.
    - One-time, daily, interval, manual tasks.
    - Bind workspace, model, and reasoning/execution settings.
-   - Status: partial done. Schedule CRUD, due listing, next-run calculation, and
-     manual trigger-to-job exist; automatic scheduler runner and wake catch-up
-     are still missing.
+   - Status: partial done. Schedule CRUD, due listing, next-run calculation,
+     manual trigger-to-job, worker runner, and startup catch-up exist; product
+     UI and model/reasoning policy binding are still missing.
 
 10. Add IM/mobile background agent.
     - Feishu/Lark/WeChat/relay setup.
@@ -209,9 +215,10 @@ changes land.
 
 ## Current Next Step
 
-Implement the desktop approval queue UI, then add approval-gated MCP/Web calls
-and the scheduler worker loop. The backend approval ledger, approval-gated local
-tools, provider registry, agent registry, OpenClaw prompt/config sync,
-Skills/MCP registry foundation, scheduled task foundation, and diagnostics
-surface now exist; the next highest-value slices are making approvals visible
-and turning persisted schedules/MCP entries into background execution paths.
+Implement approval-gated MCP/Web calls, schedule configuration UI, and worker
+routing through the provider/agent registries. The backend approval ledger,
+approval-gated local tools, desktop approval queue, provider registry, agent
+registry, OpenClaw prompt/config sync, Skills/MCP registry foundation,
+scheduled task runner, and diagnostics surface now exist; the next highest-value
+slices are extending the same approval pattern to network/MCP tools and making
+model/provider choices drive real worker execution.

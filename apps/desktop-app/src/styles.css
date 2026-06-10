@@ -545,6 +545,132 @@ select {
   overflow-wrap: anywhere;
 }
 
+.approvalQueue {
+  display: grid;
+  gap: 12px;
+}
+
+.approvalCard {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #252a32;
+  border-radius: 6px;
+  background: #151922;
+}
+
+.approvalCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.approvalCardHeader strong,
+.approvalCardHeader span {
+  display: block;
+}
+
+.approvalCardHeader strong {
+  color: #ffffff;
+  font-size: 16px;
+}
+
+.approvalCardHeader span {
+  margin-top: 4px;
+  color: #8c97a7;
+  font-size: 12px;
+}
+
+.riskPill {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.riskPill.success {
+  background: rgba(88, 201, 139, 0.16);
+  color: #8cf0b7;
+}
+
+.riskPill.warn {
+  background: rgba(242, 184, 75, 0.16);
+  color: #f5c96c;
+}
+
+.riskPill.danger {
+  background: rgba(228, 109, 109, 0.17);
+  color: #ff9d9d;
+}
+
+.approvalDetails {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.approvalDetails div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #252a32;
+  border-radius: 6px;
+  background: #11151c;
+}
+
+.approvalDetails .wide {
+  grid-column: 1 / -1;
+}
+
+.approvalDetails dt {
+  margin-bottom: 4px;
+  color: #8c97a7;
+  font-size: 12px;
+}
+
+.approvalDetails dd {
+  margin: 0;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.approvalPayloads {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.approvalPayloads pre {
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid #252a32;
+  border-radius: 6px;
+  background: #0f131a;
+  color: #b8c2d2;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.approvalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.emptyApprovalPanel {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: #8c97a7;
+}
+
 .jobWorkspace {
   display: grid;
   grid-template-columns: minmax(320px, 410px) minmax(0, 1fr);
@@ -3013,6 +3139,8 @@ select {
   .capabilityGrid,
   .supervisorWorkbenchGrid,
   .jobWorkspace,
+  .approvalDetails,
+  .approvalPayloads,
   .composerControls,
   .customTimeFilters,
   .stats,
