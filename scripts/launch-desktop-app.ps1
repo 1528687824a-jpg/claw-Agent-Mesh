@@ -13,6 +13,7 @@ $logPath = Join-Path $root "logs\desktop-launcher.log"
 $honeycombRuntimeHostDir = Join-Path ([Environment]::GetFolderPath("ApplicationData")) "io.agentopenclaw.desktop\openclaw-runtime"
 $dockerProbeTimeoutSeconds = 10
 $dockerCommandTimeoutSeconds = 90
+$desktopBuildTimeoutSeconds = 600
 $apiHealthUrl = "http://localhost:3000/health"
 $desktopLaunched = $false
 
@@ -213,6 +214,40 @@ function Test-DesktopExeNeedsBuild {
   return $sourceWriteTime -gt $exeWriteTime
 }
 
+function Get-NpmCli {
+  $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+  if (-not $npmCommand) {
+    $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+  }
+  if (-not $npmCommand) {
+    throw "npm CLI not found"
+  }
+
+  return $npmCommand.Source
+}
+
+function Invoke-DesktopNoBundleBuild {
+  $buildLogPath = Join-Path $root "logs\desktop-launcher-build.log"
+  $npmCli = Get-NpmCli
+  $result = Invoke-ProcessWithTimeout `
+    -FilePath $npmCli `
+    -ArgumentList @("--prefix", "apps/desktop-app", "exec", "tauri", "build", "--", "--no-bundle") `
+    -TimeoutSeconds $desktopBuildTimeoutSeconds `
+    -IgnoreExitCode
+
+  @(
+    "STDOUT:",
+    $result.Stdout,
+    "",
+    "STDERR:",
+    $result.Stderr
+  ) | Set-Content -LiteralPath $buildLogPath -Encoding UTF8
+
+  if ($result.ExitCode -ne 0) {
+    throw "Tauri no-bundle build failed with exit code $($result.ExitCode). See $buildLogPath"
+  }
+}
+
 try {
   Write-LaunchLog "Launcher started"
 
@@ -225,10 +260,7 @@ try {
 
   if (Test-DesktopExeNeedsBuild) {
     Write-LaunchLog "Desktop exe missing or stale; building release app without bundle"
-    npm --prefix apps/desktop-app exec tauri build -- --no-bundle *> (Join-Path $root "logs\desktop-launcher-build.log")
-    if ($LASTEXITCODE -ne 0) {
-      throw "Tauri no-bundle build failed"
-    }
+    Invoke-DesktopNoBundleBuild
   } else {
     Write-LaunchLog "Desktop exe is up to date"
   }
