@@ -229,6 +229,31 @@ export type RuntimeUsageResponse = {
   };
 };
 
+export type RuntimeCapabilityStatus = "ready" | "partial" | "planned";
+
+export type RuntimeCapability = {
+  id: string;
+  title: string;
+  status: RuntimeCapabilityStatus;
+  summary: string;
+  routes: string[];
+  implemented: string[];
+  missing: string[];
+  nextActions: string[];
+};
+
+export type RuntimeCapabilitiesResponse = {
+  generatedAt: string;
+  summary: {
+    ready: number;
+    partial: number;
+    planned: number;
+    total: number;
+  };
+  capabilities: RuntimeCapability[];
+  recommendedNext: string[];
+};
+
 export type WorkspaceEntry = {
   name: string;
   relativePath: string;
@@ -778,6 +803,10 @@ export async function getRuntimeUsage(input: RuntimeUsageInput = {}) {
     }
   }
   return request<RuntimeUsageResponse>(`/runtime/usage?${params.toString()}`);
+}
+
+export async function getRuntimeCapabilities() {
+  return request<RuntimeCapabilitiesResponse>("/runtime/capabilities");
 }
 
 export async function inspectWorkspace(rootPath: string) {

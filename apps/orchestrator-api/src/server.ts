@@ -73,6 +73,7 @@ import {
 } from "../../../packages/shared/src/types";
 import { launchDbos, startJobWorkflow } from "./dbos-runtime";
 import { ingressAdapters } from "./adapters";
+import { getRuntimeCapabilities } from "./capabilities";
 
 const unstickModelCallSchema = z.object({
   jobId: z.string().min(1),
@@ -484,6 +485,10 @@ async function main() {
     } catch (error) {
       next(error);
     }
+  });
+
+  app.get("/runtime/capabilities", (_request, response) => {
+    response.json(getRuntimeCapabilities());
   });
 
   app.get("/workspaces/inspect", async (request, response, next) => {
