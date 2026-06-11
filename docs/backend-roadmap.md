@@ -52,6 +52,8 @@ changes land.
    - MCP server registry CRUD API.
    - Enable/disable state.
    - MCP command availability diagnostics.
+   - Approval-gated MCP stdio `tools/call` proxy with timeout/output caps and
+     audit events.
 
 9. Scheduled task foundation
    - Schedule table and CRUD API.
@@ -134,8 +136,9 @@ changes land.
    - Backend persists skills and MCP servers through `/skills` and
      `/mcp-servers`.
    - MCP command availability can be checked.
-   - Actual MCP session/call execution, approval-gated MCP proxy, and per-agent
-     access policy enforcement are still missing.
+   - Minimal approval-gated stdio MCP `tools/call` execution exists.
+   - Long-lived MCP sessions, tools/list, resource APIs, and per-agent access
+     policy enforcement are still missing.
 
 5. Web/MCP/network tool gateway
    - File writes and command runs are approval-gated.
@@ -232,9 +235,10 @@ changes land.
    - Same approval ledger as file/command.
    - Timeout/output caps.
    - Event stream visibility.
-   - Status: partial done. Web fetch is approval-gated and audited; MCP call
-     execution, web search, browser automation, and per-agent access policy are
-     still missing.
+   - Status: partial done. Web fetch and minimal MCP stdio tools/call are
+     approval-gated and audited; web search, browser automation, long-lived MCP
+     sessions, tools/list, resources, and per-agent access policy are still
+     missing.
 
 ### Phase D: Make It Operable Like A Product
 
@@ -258,11 +262,11 @@ changes land.
 
 ## Current Next Step
 
-Implement approval-gated MCP/search/browser calls, schedule configuration UI,
-and packaged OpenClaw launch/restart integration. The backend approval ledger,
-approval-gated local tools, approval-gated web fetch, desktop approval queue,
-provider registry, agent registry, worker provider/agent routing, OpenClaw
-prompt/config sync, Skills/MCP registry foundation, scheduled task runner, and
-diagnostics surface now exist; the next highest-value slices are extending the
-same approval pattern to MCP/search/browser tools and proving a real OpenClaw
-provider end-to-end.
+Implement approval-gated search/browser calls, MCP session reuse/tools-list,
+schedule configuration UI, and packaged OpenClaw launch/restart integration. The
+backend approval ledger, approval-gated local tools, approval-gated web fetch,
+approval-gated MCP tools/call, desktop approval queue, provider registry, agent
+registry, worker provider/agent routing, OpenClaw prompt/config sync, Skills/MCP
+registry foundation, scheduled task runner, and diagnostics surface now exist;
+the next highest-value slices are extending the same approval pattern to
+search/browser tools and proving a real OpenClaw provider end-to-end.

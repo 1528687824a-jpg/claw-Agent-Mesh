@@ -133,6 +133,12 @@ import {
 } from "./local-secrets";
 import { verifyOpenAiCompatibleProvider } from "./provider-verification";
 import { checkMcpCommand } from "./mcp-diagnostics";
+import {
+  formatMcpToolCommand,
+  formatMcpToolTarget,
+  McpToolError,
+  runMcpToolCall
+} from "./mcp-tools";
 import { getRuntimeDiagnostics } from "./runtime-diagnostics";
 
 const unstickModelCallSchema = z.object({
@@ -254,6 +260,14 @@ const mcpServerSchema = z.object({
 });
 
 const patchMcpServerSchema = mcpServerSchema.partial();
+
+const mcpToolCallSchema = z.object({
+  toolName: z.string().trim().min(1).max(200),
+  arguments: z.record(z.unknown()).optional(),
+  timeoutMs: z.number().int().min(1000).max(120000).optional(),
+  maxOutputBytes: z.number().int().min(1).max(1024 * 1024).optional(),
+  approvalId: z.string().trim().min(1).max(200)
+});
 
 const scheduleBaseSchema = z.object({
   id: z.string().trim().min(1).max(160).optional(),
@@ -484,6 +498,8 @@ const WORKSPACE_COMMAND_ACTION_TYPES = new Set([
 ]);
 const WEB_FETCH_TOOL_NAMES = new Set(["web.fetch", "network.fetch", "http.fetch"]);
 const WEB_FETCH_ACTION_TYPES = new Set(["web_fetch", "network_fetch", "http_get"]);
+const MCP_TOOL_CALL_TOOL_NAMES = new Set(["mcp.call", "mcp.toolCall", "mcp.tools/call"]);
+const MCP_TOOL_CALL_ACTION_TYPES = new Set(["mcp_call", "mcp_tool_call", "mcp_tools_call"]);
 
 function normalizeApprovalTarget(target: string | null) {
   if (!target) {
@@ -1090,6 +1106,113 @@ async function main() {
       response.json({
         server: patched,
         check
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/mcp-servers/:serverId/tools/call", async (request, response, next) => {
+    try {
+      const input = mcpToolCallSchema.parse(request.body ?? {});
+      const server = await getMcpServer(request.params.serverId);
+      if (!server) {
+        response.status(404).json({ error: "mcp_server_not_found" });
+        return;
+      }
+
+      const expectedTarget = formatMcpToolTarget(server.id, input.toolName);
+      const expectedCommand = formatMcpToolCommand(server, input.toolName);
+      const approval = await getToolApproval(input.approvalId);
+
+      if (!approval) {
+        response.status(404).json({ error: "approval_not_found" });
+        return;
+      }
+
+      if (approval.status !== "approved") {
+        response.status(409).json({
+          error: "approval_not_approved",
+          approval
+        });
+        return;
+      }
+
+      if (
+        !MCP_TOOL_CALL_TOOL_NAMES.has(approval.toolName) ||
+        !MCP_TOOL_CALL_ACTION_TYPES.has(approval.actionType)
+      ) {
+        response.status(409).json({
+          error: "approval_not_for_mcp_tool_call",
+          approval
+        });
+        return;
+      }
+
+      if (approval.target !== expectedTarget) {
+        response.status(409).json({
+          error: "approval_target_mismatch",
+          expected: expectedTarget,
+          actual: approval.target,
+          approval
+        });
+        return;
+      }
+
+      const approvalCommand = normalizeApprovalCommand(approval.command);
+      if (approvalCommand && approvalCommand !== expectedCommand) {
+        response.status(409).json({
+          error: "approval_command_mismatch",
+          expected: expectedCommand,
+          actual: approvalCommand,
+          approval
+        });
+        return;
+      }
+
+      const consumed = await consumeToolApproval({
+        approvalId: approval.id,
+        consumedBy: "mcp.tools/call"
+      });
+      if (!consumed.changed || !consumed.approval) {
+        response.status(409).json({
+          error: "approval_not_consumable",
+          reason: consumed.reason,
+          approval: consumed.approval
+        });
+        return;
+      }
+
+      const result = await runMcpToolCall({
+        server,
+        toolName: input.toolName,
+        arguments: input.arguments,
+        timeoutMs: input.timeoutMs,
+        maxOutputBytes: input.maxOutputBytes
+      });
+
+      await appendJobEvent(
+        approval.jobId,
+        "tool.mcp_call_completed",
+        {
+          approvalId: approval.id,
+          serverId: server.id,
+          serverName: server.name,
+          toolName: input.toolName,
+          displayCommand: result.displayCommand,
+          resultPreview: JSON.stringify(result.result).slice(0, 4000),
+          stderrPreview: result.stderr.slice(0, 4000),
+          durationMs: result.durationMs
+        },
+        {
+          actor: "mcp.tools/call",
+          stageId: approval.stageId
+        }
+      );
+
+      response.json({
+        approval: consumed.approval,
+        call: result
       });
     } catch (error) {
       next(error);
@@ -2157,6 +2280,15 @@ async function main() {
 
     if (error instanceof WebFetchError) {
       response.status(error.code === "private_network_blocked" ? 403 : 400).json({
+        error: error.code,
+        message: error.message,
+        details: error.details
+      });
+      return;
+    }
+
+    if (error instanceof McpToolError) {
+      response.status(400).json({
         error: error.code,
         message: error.message,
         details: error.details

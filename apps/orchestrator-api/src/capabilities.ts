@@ -281,7 +281,7 @@ const capabilities: RuntimeCapability[] = [
     id: "skills_mcp",
     title: "Skills and MCP registry",
     status: "partial",
-    summary: "Skills and MCP servers can be persisted, toggled, and command-checked; actual MCP call execution is not complete.",
+    summary: "Skills and MCP servers can be persisted, toggled, command-checked, and called through a minimal approval-gated stdio MCP tools/call proxy.",
     routes: [
       "GET /skills",
       "POST /skills",
@@ -289,21 +289,25 @@ const capabilities: RuntimeCapability[] = [
       "GET /mcp-servers",
       "POST /mcp-servers",
       "PATCH /mcp-servers/:serverId",
-      "POST /mcp-servers/:serverId/check"
+      "POST /mcp-servers/:serverId/check",
+      "POST /mcp-servers/:serverId/tools/call"
     ],
     implemented: [
       "Skill registry table and CRUD API",
       "MCP server registry table and CRUD API",
       "Enable/disable state",
-      "MCP command availability diagnostics"
+      "MCP command availability diagnostics",
+      "Approval-gated MCP stdio initialize + tools/call proxy",
+      "MCP timeout and output caps",
+      "MCP call audit events"
     ],
     missing: [
-      "Actual MCP session/call execution",
-      "Approval-gated MCP call proxy",
+      "Long-lived MCP sessions",
+      "MCP tools/list and resource APIs",
       "Per-agent MCP access policy enforcement"
     ],
     nextActions: [
-      "Add approval-gated MCP call path after desktop approval UI"
+      "Add MCP tools/list, long-lived sessions, and per-agent policy"
     ]
   },
   {
@@ -326,11 +330,11 @@ const capabilities: RuntimeCapability[] = [
     missing: [
       "Approval-gated web search",
       "Approval-gated browser automation",
-      "Approval-gated MCP call execution",
+      "Long-lived MCP execution sessions",
       "Per-agent network/MCP access policy enforcement"
     ],
     nextActions: [
-      "Implement approval-gated MCP call proxy and web search gateway"
+      "Implement web search/browser gateways and MCP session reuse"
     ]
   },
   {
@@ -424,7 +428,7 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     summary,
     capabilities,
     recommendedNext: [
-      "Approval-gated MCP/search/browser tool calls",
+      "Approval-gated search/browser tool calls and MCP session reuse",
       "Schedule configuration UI",
       "Packaged OpenClaw launch/restart command defaults and real E2E regression"
     ]
