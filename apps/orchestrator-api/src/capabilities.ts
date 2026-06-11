@@ -188,7 +188,7 @@ const capabilities: RuntimeCapability[] = [
     id: "openclaw_sync",
     title: "OpenClaw real-agent sync",
     status: "partial",
-    summary: "Runtime discovery, sync plan/apply/validate APIs, workflow shape, and templates exist; native OpenClaw launch/config integration is still partial.",
+    summary: "Runtime discovery, sync plan/apply/validate APIs, workflow shape, templates, and worker agent routing exist; native OpenClaw launch/config integration is still partial.",
     routes: [
       "GET /openclaw/runtime",
       "POST /openclaw/sync/plan",
@@ -203,6 +203,7 @@ const capabilities: RuntimeCapability[] = [
       "Agent prompt templates",
       "Example OpenClaw multi-agent config",
       "Worker workflow shape",
+      "Worker resolves Honeycomb agents to OpenClaw agent IDs before real CLI calls",
       "OpenClaw real smoke scripts"
     ],
     missing: [
@@ -211,14 +212,14 @@ const capabilities: RuntimeCapability[] = [
       "Real-agent workflow replacement for remaining mock activities"
     ],
     nextActions: [
-      "Connect worker execution to synced OpenClaw agents"
+      "Add native OpenClaw provider config writer and launch/restart integration"
     ]
   },
   {
     id: "provider_registry",
     title: "Model/provider configuration center",
     status: "partial",
-    summary: "Backend provider registry, local-only key status, and OpenAI-compatible verification are available; worker routing is not complete.",
+    summary: "Backend provider registry, local-only key status, OpenAI-compatible verification, shared Docker secret volume, and worker provider routing are available.",
     routes: [
       "GET /providers",
       "POST /providers",
@@ -231,21 +232,23 @@ const capabilities: RuntimeCapability[] = [
       "Durable provider registry",
       "Local-only provider key storage boundary",
       "Redacted key configured/fingerprint status",
-      "OpenAI-compatible provider verification endpoint"
+      "OpenAI-compatible provider verification endpoint",
+      "API and worker share provider secrets through a Docker secret volume",
+      "Worker passes provider base URL, model, and API key to real OpenClaw CLI calls as runtime env"
     ],
     missing: [
-      "Per-agent model/provider assignment",
-      "Worker use of provider registry"
+      "Native OpenClaw provider config format writer",
+      "Real provider end-to-end regression against installed OpenClaw"
     ],
     nextActions: [
-      "Connect agent registry and worker routing to provider registry"
+      "Write native OpenClaw provider config and restart/validate the runtime"
     ]
   },
   {
     id: "agent_registry",
     title: "Agent registry",
     status: "partial",
-    summary: "Backend agent registry, default Honeycomb catalog, and OpenClaw sync status tracking exist; worker execution is not complete.",
+    summary: "Backend agent registry, default Honeycomb catalog, OpenClaw sync status tracking, and worker runtime resolution exist.",
     routes: [
       "GET /agents",
       "POST /agents",
@@ -259,13 +262,14 @@ const capabilities: RuntimeCapability[] = [
       "Agent config CRUD API",
       "Default panel/research/writer/image/video/test catalog",
       "Panel agent maps to OpenClaw main-agent without duplicate Honeycomb main-agent",
-      "OpenClaw sync status per agent"
+      "OpenClaw sync status per agent",
+      "Worker maps main-agent/panel aliases to panel-agent and then to the configured OpenClaw agent ID"
     ],
     missing: [
-      "Worker execution against synced OpenClaw agents"
+      "Native OpenClaw launch/restart validation after agent sync"
     ],
     nextActions: [
-      "Connect worker execution to synced OpenClaw agents"
+      "Validate real worker execution after OpenClaw provider config writing lands"
     ]
   },
   {
@@ -409,7 +413,7 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     recommendedNext: [
       "Approval-gated MCP/Web tool calls",
       "Schedule configuration UI",
-      "Worker routing through provider and agent registries"
+      "Native OpenClaw provider config and launch/restart integration"
     ]
   };
 }

@@ -51,6 +51,7 @@ import {
   DEFAULT_MAX_MODEL_CALLS,
   DEFAULT_ROUTING_MODE
 } from "../../../packages/shared/src/types";
+import { redactAgentRuntime, resolveAgentRuntime } from "./agent-runtime";
 import { runOpenClawAgent, type OpenClawRunResult } from "./adapters/openclaw";
 import { loadClusterConfig } from "./config/cluster";
 import { deliverOutboundMessage } from "./egress/dispatcher";
@@ -104,6 +105,8 @@ async function runOpenClawAgentIdempotent(input: {
     input.actionType
   ].join(":");
   const existing = await getModelCallByKey(idempotencyKey);
+  const route = await resolveAgentRuntime({ requestedAgentId: input.agentId });
+  const redactedRoute = redactAgentRuntime(route);
 
   if (existing?.status === "succeeded") {
     await appendJobEvent(
@@ -111,11 +114,14 @@ async function runOpenClawAgentIdempotent(input: {
       "tool.openclaw_agent_reused",
       {
         stageId: input.stageId,
-        agentId: input.agentId,
+        agentId: route.honeycombAgentId,
+        requestedAgentId: input.agentId,
+        openclawAgentId: route.openclawAgentId,
         attemptNo: input.attemptNo,
         actionType: input.actionType,
         modelCallId: existing.id,
-        idempotencyKey
+        idempotencyKey,
+        route: redactedRoute
       },
       {
         actor: "tool-gateway",
@@ -137,7 +143,7 @@ async function runOpenClawAgentIdempotent(input: {
     stageId: input.stageId,
     attemptNo: input.attemptNo,
     actionType: input.actionType,
-    agentId: input.agentId,
+    agentId: route.honeycombAgentId,
     agentSessionId: input.sessionId,
     requestHash: sha256(input.message)
   });
@@ -147,11 +153,14 @@ async function runOpenClawAgentIdempotent(input: {
     "tool.openclaw_agent_requested",
     {
       stageId: input.stageId,
-      agentId: input.agentId,
+      agentId: route.honeycombAgentId,
+      requestedAgentId: input.agentId,
+      openclawAgentId: route.openclawAgentId,
       attemptNo: input.attemptNo,
       actionType: input.actionType,
       idempotencyKey,
-      mode: process.env.OPENCLAW_AGENT_MODE === "real" ? "real" : "mock"
+      mode: process.env.OPENCLAW_AGENT_MODE === "real" ? "real" : "mock",
+      route: redactedRoute
     },
     {
       actor: "tool-gateway",
@@ -161,16 +170,23 @@ async function runOpenClawAgentIdempotent(input: {
 
   try {
     const result = await runOpenClawAgent({
-      agentId: input.agentId,
+      agentId: route.openclawAgentId,
       sessionId: input.sessionId,
       message: input.message,
+      provider: {
+        providerId: route.providerId,
+        baseUrl: route.providerBaseUrl,
+        model: route.model,
+        apiKey: route.apiKey
+      },
       timeoutSeconds: input.timeoutSeconds
     });
 
     await markModelCallSucceeded({
       idempotencyKey,
       responsePayload: {
-        result
+        result,
+        route: redactedRoute
       }
     });
 
@@ -179,12 +195,15 @@ async function runOpenClawAgentIdempotent(input: {
       "tool.openclaw_agent_completed",
       {
         stageId: input.stageId,
-        agentId: input.agentId,
+        agentId: route.honeycombAgentId,
+        requestedAgentId: input.agentId,
+        openclawAgentId: route.openclawAgentId,
         attemptNo: input.attemptNo,
         actionType: input.actionType,
         idempotencyKey,
         mode: result?.mode ?? null,
-        sessionId: result?.sessionId ?? input.sessionId
+        sessionId: result?.sessionId ?? input.sessionId,
+        route: redactedRoute
       },
       {
         actor: "tool-gateway",

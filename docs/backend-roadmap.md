@@ -66,6 +66,15 @@ changes land.
    - No-secret scan.
    - Desktop launcher and shortcut repair path.
 
+11. Worker model/agent routing foundation
+   - Worker resolves `main-agent`/panel aliases through the backend agent
+     registry.
+   - The panel-agent maps to OpenClaw `main-agent`; Honeycomb no longer needs a
+     duplicate `main-agent` registry entry.
+   - Worker reads provider/model/key configuration and passes redacted routing
+     metadata into job events.
+   - Docker API and worker containers share a local-only provider secret volume.
+
 ## Partial Or Not Yet Real Enough
 
 1. OpenClaw real-agent orchestration
@@ -73,16 +82,21 @@ changes land.
    - Runtime discovery is now available through `GET /openclaw/runtime`.
    - Sync plan/apply/validate APIs now write Honeycomb prompt/config files into
      the selected runtime.
-   - Native OpenClaw provider config writing, OpenClaw launch/restart, and
-     remaining mock activity replacement are still not complete.
+   - Worker execution now resolves Honeycomb agents to OpenClaw agent IDs and
+     supplies provider/model/key runtime environment variables for real CLI
+     calls.
+   - Native OpenClaw provider config writing, OpenClaw launch/restart, and real
+     OpenClaw end-to-end regression are still not complete.
 
 2. Model/provider configuration center
    - First-run UI can collect model and API key.
    - Backend provider registry now exists through `/providers`.
    - API keys are saved through a local-only secret boundary; responses only
      expose configured/fingerprint status.
-   - Worker routing and generated OpenClaw config do not yet consume this
+   - Worker routing consumes provider base URL, model, and API key from this
      registry.
+   - Native generated OpenClaw provider config still needs the exact OpenClaw
+     format and restart/validation path.
 
 3. Agent registry
    - Product concept needs panel supervisor, research, writer, image, video,
@@ -93,8 +107,9 @@ changes land.
    - The panel-agent maps to OpenClaw `main-agent` without duplicating a
      Honeycomb main-agent entry.
    - OpenClaw prompt/config sync and validation exist.
-   - Native OpenClaw provider config wiring and worker execution against synced
-     agents are still missing.
+   - Worker maps panel/main aliases through the registry before calling
+     OpenClaw.
+   - Native OpenClaw launch/restart validation after sync is still missing.
 
 4. Skills and MCP registry
    - Backend persists skills and MCP servers through `/skills` and
@@ -153,16 +168,18 @@ changes land.
    - Store provider name, base URL template, model, key configured flag, and
      verification status.
    - Keep API keys local-only and redacted.
-   - Status: partial done. Registry and local-only key status exist; worker
-     routing still needs to consume it.
+   - Status: partial done. Registry, local-only key status, verification, shared
+     Docker secret volume, and worker routing now exist; native OpenClaw
+     provider config writing is still missing.
 
 4. Add agent registry.
    - Store panel supervisor and child agents.
    - Use the user-provided panel-agent name for the main/panel agent.
    - Add missing `video-agent`.
    - Track whether each agent is synced to OpenClaw.
-   - Status: partial done. Registry and default catalog exist; OpenClaw sync
-     still needs to write/validate external runtime config.
+   - Status: partial done. Registry, default catalog, OpenClaw prompt/config
+     sync, and worker runtime resolution exist; OpenClaw launch/restart
+     validation is still missing.
 
 5. Add OpenClaw sync API.
    - Generate or update agent prompt files.
@@ -215,10 +232,10 @@ changes land.
 
 ## Current Next Step
 
-Implement approval-gated MCP/Web calls, schedule configuration UI, and worker
-routing through the provider/agent registries. The backend approval ledger,
-approval-gated local tools, desktop approval queue, provider registry, agent
-registry, OpenClaw prompt/config sync, Skills/MCP registry foundation,
-scheduled task runner, and diagnostics surface now exist; the next highest-value
-slices are extending the same approval pattern to network/MCP tools and making
-model/provider choices drive real worker execution.
+Implement approval-gated MCP/Web calls, schedule configuration UI, and native
+OpenClaw provider config plus launch/restart integration. The backend approval
+ledger, approval-gated local tools, desktop approval queue, provider registry,
+agent registry, worker provider/agent routing, OpenClaw prompt/config sync,
+Skills/MCP registry foundation, scheduled task runner, and diagnostics surface
+now exist; the next highest-value slices are extending the same approval pattern
+to network/MCP tools and proving a real OpenClaw provider end-to-end.

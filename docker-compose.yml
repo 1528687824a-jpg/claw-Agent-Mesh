@@ -35,6 +35,7 @@ services:
       FEISHU_ADAPTER_ENABLED: "false"
       FEISHU_DRY_RUN: "true"
       OPENCLAW_AGENT_MODE: mock
+      HONEYCOMB_SECRET_DIR: /app/honeycomb-secrets
       AGENT_CLUSTER_CONFIG_PATH: ${AGENT_CLUSTER_CONFIG_PATH:-}
       HONEYCOMB_AGENT_MODEL_CONFIG_PATH: ${HONEYCOMB_AGENT_MODEL_CONFIG_PATH:-}
       HONEYCOMB_FIRST_RUN_AGENTS_DIR: ${HONEYCOMB_FIRST_RUN_AGENTS_DIR:-}
@@ -43,6 +44,7 @@ services:
       - "3000:3000"
     volumes:
       - job-data:/app/data/jobs
+      - ${HONEYCOMB_SECRET_HOST_DIR:-./.runtime/honeycomb-secrets}:/app/honeycomb-secrets
       - ${HONEYCOMB_OPENCLAW_RUNTIME_HOST_DIR:-./.runtime/honeycomb-empty}:/app/honeycomb-runtime:ro
     healthcheck:
       test:
@@ -70,12 +72,14 @@ services:
       FEISHU_ADAPTER_ENABLED: "false"
       FEISHU_DRY_RUN: "true"
       OPENCLAW_AGENT_MODE: mock
+      HONEYCOMB_SECRET_DIR: /app/honeycomb-secrets
       AGENT_CLUSTER_CONFIG_PATH: ${AGENT_CLUSTER_CONFIG_PATH:-}
       HONEYCOMB_AGENT_MODEL_CONFIG_PATH: ${HONEYCOMB_AGENT_MODEL_CONFIG_PATH:-}
       HONEYCOMB_FIRST_RUN_AGENTS_DIR: ${HONEYCOMB_FIRST_RUN_AGENTS_DIR:-}
       HONEYCOMB_PANEL_SUPERVISOR_AGENT_ID: ${HONEYCOMB_PANEL_SUPERVISOR_AGENT_ID:-panel-supervisor-agent}
     volumes:
       - job-data:/app/data/jobs
+      - ${HONEYCOMB_SECRET_HOST_DIR:-./.runtime/honeycomb-secrets}:/app/honeycomb-secrets
       - ${HONEYCOMB_OPENCLAW_RUNTIME_HOST_DIR:-./.runtime/honeycomb-empty}:/app/honeycomb-runtime:ro
 
 volumes:

@@ -10,6 +10,13 @@ export type OpenClawRunResult = {
   raw: unknown;
 };
 
+export type OpenClawProviderRuntime = {
+  providerId: string | null;
+  baseUrl: string | null;
+  model: string | null;
+  apiKey: string | null;
+};
+
 function openClawRealMode() {
   return process.env.OPENCLAW_AGENT_MODE === "real";
 }
@@ -26,11 +33,32 @@ function toOpenClawSessionId(sessionId: string) {
   return sessionId.replace(/[^A-Za-z0-9._-]/g, "-");
 }
 
-function resolveOpenClawAgentId(agentId: string) {
-  if (agentId === "main-agent") {
-    return process.env.HONEYCOMB_PANEL_SUPERVISOR_AGENT_ID?.trim() || "panel-supervisor-agent";
+function buildProviderEnv(provider?: OpenClawProviderRuntime | null) {
+  if (!provider) {
+    return {};
   }
-  return agentId;
+
+  const env: Record<string, string> = {};
+  if (provider.providerId) {
+    env.HONEYCOMB_PROVIDER_ID = provider.providerId;
+  }
+  if (provider.baseUrl) {
+    env.HONEYCOMB_PROVIDER_BASE_URL = provider.baseUrl;
+    env.OPENAI_BASE_URL = provider.baseUrl;
+  }
+  if (provider.model) {
+    env.HONEYCOMB_MODEL = provider.model;
+    env.OPENAI_MODEL = provider.model;
+  }
+  if (provider.apiKey) {
+    env.HONEYCOMB_PROVIDER_API_KEY = provider.apiKey;
+    env.OPENAI_API_KEY = provider.apiKey;
+    if (provider.providerId?.toLowerCase().includes("deepseek")) {
+      env.DEEPSEEK_API_KEY = provider.apiKey;
+    }
+  }
+
+  return env;
 }
 
 function extractText(raw: unknown): string {
@@ -70,12 +98,13 @@ export async function runOpenClawAgent(input: {
   agentId: string;
   sessionId: string;
   message: string;
+  provider?: OpenClawProviderRuntime | null;
   timeoutSeconds?: number;
 }): Promise<OpenClawRunResult | null> {
   if (!openClawRealMode()) {
     return null;
   }
-  const agentId = resolveOpenClawAgentId(input.agentId);
+  const agentId = input.agentId;
 
   const args = [
     "-d",
@@ -95,6 +124,10 @@ export async function runOpenClawAgent(input: {
   ];
 
   const { stdout } = await execFileAsync("wsl", args, {
+    env: {
+      ...process.env,
+      ...buildProviderEnv(input.provider)
+    },
     maxBuffer: 20 * 1024 * 1024,
     timeout: (input.timeoutSeconds ?? 600) * 1000 + 30_000,
     windowsHide: true

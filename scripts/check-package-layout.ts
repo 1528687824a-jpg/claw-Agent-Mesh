@@ -135,7 +135,8 @@ const result = {
     generatedOrLocalOnly: [".runtime", "logs", "data", "dist", "node_modules", "apps/desktop-app/src-tauri/target"],
     desktopRuntimeState: [
       "%APPDATA%/io.agentopenclaw.desktop/desktop-first-run",
-      "%APPDATA%/io.agentopenclaw.desktop/openclaw-runtime"
+      "%APPDATA%/io.agentopenclaw.desktop/openclaw-runtime",
+      "%APPDATA%/io.agentopenclaw.desktop/honeycomb-secrets"
     ],
     tauriFrontendDist: tauriConfig?.build?.frontendDist ?? null,
     tauriBundleActive: tauriConfig?.bundle?.active ?? null,

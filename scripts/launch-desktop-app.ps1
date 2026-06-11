@@ -11,6 +11,7 @@ $dockerDesktop = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 $desktopExe = Join-Path $root "apps\desktop-app\src-tauri\target\release\honeycomb.exe"
 $logPath = Join-Path $root "logs\desktop-launcher.log"
 $honeycombRuntimeHostDir = Join-Path ([Environment]::GetFolderPath("ApplicationData")) "io.agentopenclaw.desktop\openclaw-runtime"
+$honeycombSecretHostDir = Join-Path ([Environment]::GetFolderPath("ApplicationData")) "io.agentopenclaw.desktop\honeycomb-secrets"
 $dockerProbeTimeoutSeconds = 10
 $dockerCommandTimeoutSeconds = 90
 $desktopBuildTimeoutSeconds = 600
@@ -20,7 +21,9 @@ $desktopLaunched = $false
 Set-Location $root
 New-Item -ItemType Directory -Force -Path "logs", ".runtime" | Out-Null
 New-Item -ItemType Directory -Force -Path $honeycombRuntimeHostDir | Out-Null
+New-Item -ItemType Directory -Force -Path $honeycombSecretHostDir | Out-Null
 $env:HONEYCOMB_OPENCLAW_RUNTIME_HOST_DIR = $honeycombRuntimeHostDir
+$env:HONEYCOMB_SECRET_HOST_DIR = $honeycombSecretHostDir
 $env:AGENT_CLUSTER_CONFIG_PATH = "/app/honeycomb-runtime/cluster.config.json"
 $env:HONEYCOMB_AGENT_MODEL_CONFIG_PATH = "/app/honeycomb-runtime/agent-model-configs.json"
 $env:HONEYCOMB_FIRST_RUN_AGENTS_DIR = "/app/honeycomb-runtime/agents"
