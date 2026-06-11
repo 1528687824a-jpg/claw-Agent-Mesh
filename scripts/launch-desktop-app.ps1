@@ -229,25 +229,88 @@ function Get-NpmCli {
   return $npmCommand.Source
 }
 
-function Invoke-DesktopNoBundleBuild {
-  $buildLogPath = Join-Path $root "logs\desktop-launcher-build.log"
-  $npmCli = Get-NpmCli
-  $result = Invoke-ProcessWithTimeout `
+function Get-CargoCli {
+  $cargoCommand = Get-Command cargo.exe -ErrorAction SilentlyContinue
+  if (-not $cargoCommand) {
+    $cargoCommand = Get-Command cargo -ErrorAction SilentlyContinue
+  }
+  if (-not $cargoCommand) {
+    throw "Cargo CLI not found"
+  }
+
+  return $cargoCommand.Source
+}
+
+function Invoke-TauriNoBundleBuild {
+  param(
+    [string]$NpmCli
+  )
+
+  return Invoke-ProcessWithTimeout `
     -FilePath $npmCli `
     -ArgumentList @("--prefix", "apps/desktop-app", "exec", "tauri", "build", "--", "--no-bundle") `
     -TimeoutSeconds $desktopBuildTimeoutSeconds `
     -IgnoreExitCode
+}
 
-  @(
-    "STDOUT:",
-    $result.Stdout,
-    "",
-    "STDERR:",
-    $result.Stderr
-  ) | Set-Content -LiteralPath $buildLogPath -Encoding UTF8
+function Invoke-CargoCleanForDesktop {
+  $cargoCli = Get-CargoCli
+  $manifestPath = Join-Path $root "apps\desktop-app\src-tauri\Cargo.toml"
+  $result = Invoke-ProcessWithTimeout `
+    -FilePath $cargoCli `
+    -ArgumentList @("clean", "--manifest-path", $manifestPath) `
+    -TimeoutSeconds 180 `
+    -IgnoreExitCode
 
   if ($result.ExitCode -ne 0) {
-    throw "Tauri no-bundle build failed with exit code $($result.ExitCode). See $buildLogPath"
+    throw "Cargo clean failed with exit code $($result.ExitCode). $($result.Stderr)"
+  }
+
+  return $result
+}
+
+function Write-DesktopBuildLog {
+  param(
+    [string]$BuildLogPath,
+    [object[]]$Attempts
+  )
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  foreach ($attempt in $Attempts) {
+    $lines.Add("ATTEMPT: $($attempt.Name)")
+    $lines.Add("EXIT_CODE: $($attempt.Result.ExitCode)")
+    $lines.Add("")
+    $lines.Add("STDOUT:")
+    $lines.Add($attempt.Result.Stdout)
+    $lines.Add("")
+    $lines.Add("STDERR:")
+    $lines.Add($attempt.Result.Stderr)
+    $lines.Add("")
+  }
+  $lines | Set-Content -LiteralPath $BuildLogPath -Encoding UTF8
+}
+
+function Invoke-DesktopNoBundleBuild {
+  $buildLogPath = Join-Path $root "logs\desktop-launcher-build.log"
+  $npmCli = Get-NpmCli
+  $attempts = New-Object System.Collections.Generic.List[object]
+  $result = Invoke-TauriNoBundleBuild -NpmCli $npmCli
+  $attempts.Add([pscustomobject]@{ Name = "tauri-build"; Result = $result })
+  Write-DesktopBuildLog -BuildLogPath $buildLogPath -Attempts $attempts
+
+  if ($result.ExitCode -eq 0) {
+    return
+  }
+
+  Write-LaunchLog "Tauri no-bundle build failed; cleaning Cargo target and retrying once"
+  $cleanResult = Invoke-CargoCleanForDesktop
+  $attempts.Add([pscustomobject]@{ Name = "cargo-clean"; Result = $cleanResult })
+  $retryResult = Invoke-TauriNoBundleBuild -NpmCli $npmCli
+  $attempts.Add([pscustomobject]@{ Name = "tauri-build-after-cargo-clean"; Result = $retryResult })
+  Write-DesktopBuildLog -BuildLogPath $buildLogPath -Attempts $attempts
+
+  if ($retryResult.ExitCode -ne 0) {
+    throw "Tauri no-bundle build failed after Cargo clean with exit code $($retryResult.ExitCode). See $buildLogPath"
   }
 }
 
