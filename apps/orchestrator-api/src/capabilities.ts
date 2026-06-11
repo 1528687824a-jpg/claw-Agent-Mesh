@@ -181,7 +181,7 @@ const capabilities: RuntimeCapability[] = [
       "Per-tool approval policy registry"
     ],
     nextActions: [
-      "Add policy defaults per tool and approval coverage for MCP/Web calls"
+      "Add policy defaults per tool and approval coverage for MCP/browser/search calls"
     ]
   },
   {
@@ -309,20 +309,28 @@ const capabilities: RuntimeCapability[] = [
   {
     id: "web_network_tools",
     title: "Web/MCP/network tool gateway",
-    status: "planned",
-    summary: "File and command tools are approval-gated; web, browser, MCP, and external network calls still need a safe gateway.",
-    routes: [],
-    implemented: [
-      "Reusable approval ledger pattern"
+    status: "partial",
+    summary: "Approval-gated web fetch is implemented with URL matching, timeout/output caps, redirect checks, private-network blocking, and audit events; browser/search/MCP execution still needs safe gateways.",
+    routes: [
+      "POST /tools/web/fetch"
     ],
-    missing: [
-      "Approval-gated web fetch/search",
-      "Approval-gated MCP call execution",
-      "Output and timeout caps",
+    implemented: [
+      "Reusable approval ledger pattern",
+      "Approval-gated HTTP/HTTPS GET",
+      "Approval target and command matching",
+      "Timeout and output caps",
+      "Private-network target blocking unless explicitly allowed",
+      "Redirect target revalidation",
       "Network audit events"
     ],
+    missing: [
+      "Approval-gated web search",
+      "Approval-gated browser automation",
+      "Approval-gated MCP call execution",
+      "Per-agent network/MCP access policy enforcement"
+    ],
     nextActions: [
-      "Implement approval-gated MCP call proxy after MCP registry exists"
+      "Implement approval-gated MCP call proxy and web search gateway"
     ]
   },
   {
@@ -416,7 +424,7 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     summary,
     capabilities,
     recommendedNext: [
-      "Approval-gated MCP/Web tool calls",
+      "Approval-gated MCP/search/browser tool calls",
       "Schedule configuration UI",
       "Packaged OpenClaw launch/restart command defaults and real E2E regression"
     ]

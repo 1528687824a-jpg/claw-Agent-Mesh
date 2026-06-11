@@ -89,6 +89,12 @@ import {
   WorkspacePathError
 } from "./workspaces";
 import {
+  formatWebFetchCommand,
+  normalizeWebFetchUrl,
+  runWebFetch,
+  WebFetchError
+} from "./web-tools";
+import {
   EXPERIENCE_STATUSES,
   INGRESS_ORIGINS,
   JOB_STATUSES,
@@ -420,6 +426,14 @@ const workspaceCommandRunSchema = z.object({
   approvalId: z.string().trim().min(1).max(200)
 });
 
+const webFetchRunSchema = z.object({
+  url: z.string().trim().url().max(4000),
+  timeoutMs: z.number().int().min(1000).max(60000).optional(),
+  maxBytes: z.number().int().min(1).max(1024 * 1024).optional(),
+  allowPrivateNetwork: z.boolean().optional(),
+  approvalId: z.string().trim().min(1).max(200)
+});
+
 const listApprovalsQuerySchema = z.object({
   status: z.enum(TOOL_APPROVAL_STATUSES).optional(),
   jobId: z.string().trim().min(1).max(200).optional(),
@@ -468,6 +482,8 @@ const WORKSPACE_COMMAND_ACTION_TYPES = new Set([
   "command_execute",
   "workspace_command_execute"
 ]);
+const WEB_FETCH_TOOL_NAMES = new Set(["web.fetch", "network.fetch", "http.fetch"]);
+const WEB_FETCH_ACTION_TYPES = new Set(["web_fetch", "network_fetch", "http_get"]);
 
 function normalizeApprovalTarget(target: string | null) {
   if (!target) {
@@ -478,6 +494,10 @@ function normalizeApprovalTarget(target: string | null) {
 
 function normalizeApprovalCommand(command: string | null) {
   return command?.trim() || null;
+}
+
+function approvalFlag(value: Record<string, unknown> | null | undefined, key: string) {
+  return value?.[key] === true;
 }
 
 function stableIdFromName(prefix: string, value: string) {
@@ -1451,6 +1471,119 @@ async function main() {
     }
   });
 
+  app.post("/tools/web/fetch", async (request, response, next) => {
+    try {
+      const input = webFetchRunSchema.parse(request.body ?? {});
+      const normalizedUrl = normalizeWebFetchUrl(input.url);
+      const displayCommand = formatWebFetchCommand(normalizedUrl);
+      const approval = await getToolApproval(input.approvalId);
+
+      if (!approval) {
+        response.status(404).json({ error: "approval_not_found" });
+        return;
+      }
+
+      if (approval.status !== "approved") {
+        response.status(409).json({
+          error: "approval_not_approved",
+          approval
+        });
+        return;
+      }
+
+      if (!WEB_FETCH_TOOL_NAMES.has(approval.toolName) || !WEB_FETCH_ACTION_TYPES.has(approval.actionType)) {
+        response.status(409).json({
+          error: "approval_not_for_web_fetch",
+          approval
+        });
+        return;
+      }
+
+      const approvalTarget = approval.target ? normalizeWebFetchUrl(approval.target) : null;
+      if (approvalTarget !== normalizedUrl) {
+        response.status(409).json({
+          error: "approval_target_mismatch",
+          expected: normalizedUrl,
+          actual: approvalTarget,
+          approval
+        });
+        return;
+      }
+
+      const approvalCommand = normalizeApprovalCommand(approval.command);
+      if (approvalCommand && approvalCommand !== displayCommand) {
+        response.status(409).json({
+          error: "approval_command_mismatch",
+          expected: displayCommand,
+          actual: approvalCommand,
+          approval
+        });
+        return;
+      }
+
+      const allowPrivateNetwork = input.allowPrivateNetwork === true;
+      if (
+        allowPrivateNetwork &&
+        !approvalFlag(approval.policy, "allowPrivateNetwork") &&
+        !approvalFlag(approval.input, "allowPrivateNetwork")
+      ) {
+        response.status(409).json({
+          error: "private_network_not_approved",
+          approval
+        });
+        return;
+      }
+
+      const consumed = await consumeToolApproval({
+        approvalId: approval.id,
+        consumedBy: "web.fetch"
+      });
+      if (!consumed.changed || !consumed.approval) {
+        response.status(409).json({
+          error: "approval_not_consumable",
+          reason: consumed.reason,
+          approval: consumed.approval
+        });
+        return;
+      }
+
+      const result = await runWebFetch({
+        url: normalizedUrl,
+        timeoutMs: input.timeoutMs,
+        maxBytes: input.maxBytes,
+        allowPrivateNetwork
+      });
+
+      await appendJobEvent(
+        approval.jobId,
+        "tool.web_fetch_completed",
+        {
+          approvalId: approval.id,
+          url: result.url,
+          finalUrl: result.finalUrl,
+          statusCode: result.statusCode,
+          ok: result.ok,
+          contentType: result.contentType,
+          byteLength: result.byteLength,
+          truncated: result.truncated,
+          durationMs: result.durationMs,
+          bodyPreview: result.bodyText.slice(0, 4000)
+        },
+        {
+          actor: "web.fetch",
+          stageId: approval.stageId
+        }
+      );
+
+      response.json({
+        approval: consumed.approval,
+        fetch: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/workspaces/git/status", async (request, response, next) => {
     try {
       const query = workspaceRootQuerySchema.parse(request.query);
@@ -2019,6 +2152,15 @@ async function main() {
 
     if (error instanceof WorkspacePathError) {
       response.status(400).json({ error: error.message });
+      return;
+    }
+
+    if (error instanceof WebFetchError) {
+      response.status(error.code === "private_network_blocked" ? 403 : 400).json({
+        error: error.code,
+        message: error.message,
+        details: error.details
+      });
       return;
     }
 

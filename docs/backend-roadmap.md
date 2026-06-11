@@ -139,8 +139,11 @@ changes land.
 
 5. Web/MCP/network tool gateway
    - File writes and command runs are approval-gated.
-   - MCP calls, web fetch/search, browser automation, and external network calls
-     still need the same approval, audit, timeout, and output limit pattern.
+   - Approval-gated web fetch now supports HTTP/HTTPS GET with approval target
+     matching, timeout/output caps, redirect revalidation, private-network
+     blocking by default, and audit events.
+   - MCP calls, web search, browser automation, and broader external network
+     calls still need the same safe gateway pattern.
 
 6. Scheduled tasks
    - Durable schedule table and CRUD API exist.
@@ -229,6 +232,9 @@ changes land.
    - Same approval ledger as file/command.
    - Timeout/output caps.
    - Event stream visibility.
+   - Status: partial done. Web fetch is approval-gated and audited; MCP call
+     execution, web search, browser automation, and per-agent access policy are
+     still missing.
 
 ### Phase D: Make It Operable Like A Product
 
@@ -252,10 +258,11 @@ changes land.
 
 ## Current Next Step
 
-Implement approval-gated MCP/Web calls, schedule configuration UI, and native
-OpenClaw provider config plus launch/restart integration. The backend approval
-ledger, approval-gated local tools, desktop approval queue, provider registry,
-agent registry, worker provider/agent routing, OpenClaw prompt/config sync,
-Skills/MCP registry foundation, scheduled task runner, and diagnostics surface
-now exist; the next highest-value slices are extending the same approval pattern
-to network/MCP tools and proving a real OpenClaw provider end-to-end.
+Implement approval-gated MCP/search/browser calls, schedule configuration UI,
+and packaged OpenClaw launch/restart integration. The backend approval ledger,
+approval-gated local tools, approval-gated web fetch, desktop approval queue,
+provider registry, agent registry, worker provider/agent routing, OpenClaw
+prompt/config sync, Skills/MCP registry foundation, scheduled task runner, and
+diagnostics surface now exist; the next highest-value slices are extending the
+same approval pattern to MCP/search/browser tools and proving a real OpenClaw
+provider end-to-end.
