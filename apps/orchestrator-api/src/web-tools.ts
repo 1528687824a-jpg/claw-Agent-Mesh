@@ -1,4 +1,6 @@
 import { lookup } from "node:dns/promises";
+import * as http from "node:http";
+import * as https from "node:https";
 import net from "node:net";
 import { performance } from "node:perf_hooks";
 
@@ -39,6 +41,21 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_MAX_BYTES = 256 * 1024;
 const HARD_MAX_BYTES = 1024 * 1024;
 const MAX_REDIRECTS = 5;
+
+type PinnedTarget = {
+  address: string;
+  family?: 4 | 6;
+  hostname: string;
+};
+
+type PinnedHttpResponse = {
+  statusCode: number;
+  statusText: string;
+  headers: http.IncomingHttpHeaders;
+  body: Buffer;
+  truncated: boolean;
+  remoteAddress: string;
+};
 
 function clampNumber(value: number | undefined, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) {
@@ -109,53 +126,76 @@ export function formatWebFetchCommand(url: string) {
   return `GET ${normalizeWebFetchUrl(url)}`;
 }
 
-async function assertPublicTarget(url: URL, allowPrivateNetwork: boolean) {
-  if (allowPrivateNetwork) {
-    return;
-  }
-
+async function resolvePinnedTarget(url: URL, allowPrivateNetwork: boolean): Promise<PinnedTarget> {
   const hostname = url.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
   if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) {
-    throw new WebFetchError("private_network_blocked", "Private network targets require explicit approval.", {
-      hostname
-    });
-  }
-
-  const directIp = net.isIP(hostname);
-  if (directIp && isPrivateAddress(hostname)) {
-    throw new WebFetchError("private_network_blocked", "Private network targets require explicit approval.", {
-      hostname
-    });
-  }
-
-  if (!directIp) {
-    const records = await lookup(hostname, { all: true });
-    const privateRecords = records.filter((record) => isPrivateAddress(record.address));
-    if (privateRecords.length > 0) {
+    if (!allowPrivateNetwork) {
       throw new WebFetchError("private_network_blocked", "Private network targets require explicit approval.", {
-        hostname,
-        addresses: privateRecords.map((record) => record.address)
+        hostname
       });
     }
   }
-}
 
-async function readResponseBody(response: Response, maxBytes: number) {
-  if (!response.body) {
-    return { body: Buffer.alloc(0), truncated: false };
+  const directIp = net.isIP(hostname);
+  if (directIp) {
+    if (!allowPrivateNetwork && isPrivateAddress(hostname)) {
+      throw new WebFetchError("private_network_blocked", "Private network targets require explicit approval.", {
+        hostname
+      });
+    }
+    return {
+      address: hostname,
+      family: directIp as 4 | 6,
+      hostname
+    };
   }
 
-  const reader = response.body.getReader();
+  let records: Array<{ address: string; family: number }>;
+  try {
+    records = await lookup(hostname, { all: true });
+  } catch (error) {
+    throw new WebFetchError("dns_lookup_failed", "Could not resolve web fetch target.", {
+      hostname,
+      message: error instanceof Error ? error.message : "dns_lookup_failed"
+    });
+  }
+
+  if (records.length === 0) {
+    throw new WebFetchError("dns_lookup_failed", "Could not resolve web fetch target.", {
+      hostname
+    });
+  }
+
+  const privateRecords = records.filter((record) => isPrivateAddress(record.address));
+  if (!allowPrivateNetwork && privateRecords.length > 0) {
+    throw new WebFetchError("private_network_blocked", "Private network targets require explicit approval.", {
+      hostname,
+      addresses: privateRecords.map((record) => record.address)
+    });
+  }
+
+  const selected = records.find((record) => allowPrivateNetwork || !isPrivateAddress(record.address)) ?? records[0];
+  return {
+    address: selected.address,
+    family: selected.family === 6 ? 6 : 4,
+    hostname
+  };
+}
+
+function headerValue(headers: http.IncomingHttpHeaders, name: string) {
+  const value = headers[name.toLowerCase()];
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value ?? null;
+}
+
+async function readResponseBody(response: http.IncomingMessage, maxBytes: number) {
   const chunks: Buffer[] = [];
   let byteLength = 0;
   let truncated = false;
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done || !value) {
-      break;
-    }
-
+  for await (const value of response) {
     const chunk = Buffer.from(value);
     const remaining = maxBytes - byteLength;
     if (chunk.length > remaining) {
@@ -164,7 +204,6 @@ async function readResponseBody(response: Response, maxBytes: number) {
         byteLength += remaining;
       }
       truncated = true;
-      await reader.cancel();
       break;
     }
 
@@ -173,6 +212,66 @@ async function readResponseBody(response: Response, maxBytes: number) {
   }
 
   return { body: Buffer.concat(chunks, byteLength), truncated };
+}
+
+function requestPinnedUrl(
+  url: URL,
+  target: PinnedTarget,
+  input: {
+    timeoutMs: number;
+    maxBytes: number;
+    signal: AbortSignal;
+  }
+): Promise<PinnedHttpResponse> {
+  return new Promise((resolve, reject) => {
+    const transport = url.protocol === "https:" ? https : http;
+    const port = url.port ? Number(url.port) : (url.protocol === "https:" ? 443 : 80);
+    const options: http.RequestOptions & https.RequestOptions = {
+      protocol: url.protocol,
+      hostname: target.address,
+      family: target.family,
+      port,
+      path: `${url.pathname}${url.search}`,
+      method: "GET",
+      headers: {
+        accept: "text/html,application/json,text/plain;q=0.9,*/*;q=0.5",
+        host: url.host,
+        "user-agent": "Honeycomb/0.1 local-agent-panel"
+      },
+      timeout: input.timeoutMs
+    };
+
+    if (url.protocol === "https:" && net.isIP(target.hostname) === 0) {
+      options.servername = target.hostname;
+    }
+
+    const request = transport.request(options, async (response) => {
+      try {
+        const { body, truncated } = await readResponseBody(response, input.maxBytes);
+        resolve({
+          statusCode: response.statusCode ?? 0,
+          statusText: response.statusMessage ?? "",
+          headers: response.headers,
+          body,
+          truncated,
+          remoteAddress: target.address
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    const abort = () => request.destroy(new Error("web_fetch_aborted"));
+    if (input.signal.aborted) {
+      abort();
+      return;
+    }
+    input.signal.addEventListener("abort", abort, { once: true });
+    request.on("timeout", () => request.destroy(new Error("web_fetch_timeout")));
+    request.on("error", reject);
+    request.on("close", () => input.signal.removeEventListener("abort", abort));
+    request.end();
+  });
 }
 
 export async function runWebFetch(input: WebFetchInput): Promise<WebFetchResult> {
@@ -187,27 +286,23 @@ export async function runWebFetch(input: WebFetchInput): Promise<WebFetchResult>
   try {
     let currentUrl = normalizedUrl;
     let redirectCount = 0;
-    let response: Response;
+    let response: PinnedHttpResponse;
 
     for (;;) {
       const parsed = new URL(currentUrl);
-      await assertPublicTarget(parsed, allowPrivateNetwork);
+      const target = await resolvePinnedTarget(parsed, allowPrivateNetwork);
 
-      response = await fetch(currentUrl, {
-        method: "GET",
-        headers: {
-          accept: "text/html,application/json,text/plain;q=0.9,*/*;q=0.5",
-          "user-agent": "Honeycomb/0.1 local-agent-panel"
-        },
-        redirect: "manual",
+      response = await requestPinnedUrl(parsed, target, {
+        timeoutMs,
+        maxBytes,
         signal: controller.signal
       });
 
-      if (![301, 302, 303, 307, 308].includes(response.status)) {
+      if (![301, 302, 303, 307, 308].includes(response.statusCode)) {
         break;
       }
 
-      const location = response.headers.get("location");
+      const location = headerValue(response.headers, "location");
       if (!location) {
         break;
       }
@@ -219,23 +314,22 @@ export async function runWebFetch(input: WebFetchInput): Promise<WebFetchResult>
         });
       }
 
-      currentUrl = normalizeWebFetchUrl(new URL(location, currentUrl).toString());
+      currentUrl = normalizeWebFetchUrl(new URL(String(location), currentUrl).toString());
     }
 
-    const { body, truncated } = await readResponseBody(response, maxBytes);
     return {
       url: normalizedUrl,
-      finalUrl: response.url,
+      finalUrl: currentUrl,
       displayCommand: formatWebFetchCommand(normalizedUrl),
       redirectCount,
-      statusCode: response.status,
+      statusCode: response.statusCode,
       statusText: response.statusText,
-      ok: response.ok,
-      contentType: response.headers.get("content-type"),
-      contentLength: response.headers.get("content-length"),
-      bodyText: body.toString("utf8"),
-      byteLength: body.length,
-      truncated,
+      ok: response.statusCode >= 200 && response.statusCode < 300,
+      contentType: String(headerValue(response.headers, "content-type") ?? "") || null,
+      contentLength: String(headerValue(response.headers, "content-length") ?? "") || null,
+      bodyText: response.body.toString("utf8"),
+      byteLength: response.body.length,
+      truncated: response.truncated,
       durationMs: Math.round(performance.now() - startedAt)
     };
   } catch (error) {

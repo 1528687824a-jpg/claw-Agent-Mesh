@@ -1,4 +1,5 @@
 import "dotenv/config";
+import path from "node:path";
 import express from "express";
 import { z } from "zod";
 import {
@@ -60,6 +61,12 @@ import {
   upsertModelProvider
 } from "../../../packages/db/src/config-registry";
 import {
+  getRegisteredWorkspaceByRootKey,
+  listRegisteredWorkspaces,
+  markRegisteredWorkspaceUsed,
+  upsertRegisteredWorkspace
+} from "../../../packages/db/src/workspace-registry";
+import {
   getAgentMcpPolicyFor,
   getMcpServer,
   isAgentMcpPolicyAllowed,
@@ -115,7 +122,7 @@ import {
   TOOL_RISK_LEVELS,
   type ExperienceStatus
 } from "../../../packages/shared/src/types";
-import { launchDbos, startJobWorkflow } from "./dbos-runtime";
+import { launchDbos, startJobWorkflow } from "../../dbos-worker/src/dbos-runtime";
 import { ingressAdapters } from "./adapters";
 import { getRuntimeCapabilities } from "./capabilities";
 import { discoverOpenClawRuntime } from "./openclaw-runtime";
@@ -135,7 +142,7 @@ import {
   getProviderApiKeyStatus,
   readProviderApiKey,
   saveProviderApiKey
-} from "./local-secrets";
+} from "../../../packages/runtime/src/local-secrets";
 import { verifyOpenAiCompatibleProvider } from "./provider-verification";
 import { checkMcpCommand } from "./mcp-diagnostics";
 import { requireApiToken } from "./api-auth";
@@ -449,6 +456,18 @@ const workspaceRootQuerySchema = z.object({
   rootPath: z.string().trim().min(1).max(2000)
 });
 
+const listRegisteredWorkspacesQuerySchema = z.object({
+  enabled: z.coerce.boolean().optional()
+});
+
+const workspaceRegisterSchema = z.object({
+  rootPath: z.string().trim().min(1).max(2000),
+  displayName: z.string().trim().min(1).max(200).nullable().optional(),
+  approvalId: z.string().trim().min(1).max(200),
+  registeredBy: z.string().trim().min(1).max(200).optional(),
+  metadata: z.record(z.unknown()).optional()
+});
+
 const workspaceFilesQuerySchema = workspaceRootQuerySchema.extend({
   subpath: z.string().trim().max(2000).optional(),
   depth: z.coerce.number().int().min(0).max(8).optional(),
@@ -527,6 +546,8 @@ const consumeApprovalSchema = z.object({
 
 const WORKSPACE_WRITE_TOOL_NAMES = new Set(["workspace.writeFile", "workspace.write"]);
 const WORKSPACE_WRITE_ACTION_TYPES = new Set(["file_write", "workspace_file_write"]);
+const WORKSPACE_REGISTER_TOOL_NAMES = new Set(["workspace.register", "workspace.addRoot"]);
+const WORKSPACE_REGISTER_ACTION_TYPES = new Set(["workspace_register", "workspace_root_register"]);
 const WORKSPACE_COMMAND_TOOL_NAMES = new Set([
   "workspace.runCommand",
   "workspace.command",
@@ -552,6 +573,50 @@ function normalizeApprovalTarget(target: string | null) {
 
 function normalizeApprovalCommand(command: string | null) {
   return command?.trim() || null;
+}
+
+function normalizeWorkspaceRootPath(rootPath: string) {
+  return path.resolve(rootPath);
+}
+
+function workspaceRootKey(rootPath: string) {
+  const resolved = normalizeWorkspaceRootPath(rootPath);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function workspaceApprovalTarget(rootPathKey: string) {
+  return `workspace://${rootPathKey}`;
+}
+
+function normalizeWorkspaceRegistrationTarget(target: string | null) {
+  const trimmed = target?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const withoutScheme = trimmed.startsWith("workspace://")
+    ? trimmed.slice("workspace://".length)
+    : trimmed.startsWith("workspace:")
+      ? trimmed.slice("workspace:".length)
+      : trimmed;
+  return workspaceRootKey(withoutScheme);
+}
+
+async function requireRegisteredWorkspaceRoot(rootPath: string, response: express.Response) {
+  const rootPathKey = workspaceRootKey(rootPath);
+  const workspace = await getRegisteredWorkspaceByRootKey(rootPathKey);
+  if (!workspace?.enabled) {
+    response.status(403).json({
+      error: "workspace_not_registered",
+      rootPath: normalizeWorkspaceRootPath(rootPath),
+      rootPathKey,
+      registerTarget: workspaceApprovalTarget(rootPathKey)
+    });
+    return null;
+  }
+
+  await markRegisteredWorkspaceUsed(rootPathKey);
+  return workspace.rootPath;
 }
 
 function approvalFlag(value: Record<string, unknown> | null | undefined, key: string) {
@@ -1740,10 +1805,127 @@ async function main() {
     }
   });
 
+  app.get("/workspaces", async (request, response, next) => {
+    try {
+      const query = listRegisteredWorkspacesQuerySchema.parse(request.query);
+      response.json({
+        workspaces: await listRegisteredWorkspaces(query)
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/workspaces/register", async (request, response, next) => {
+    try {
+      const input = workspaceRegisterSchema.parse(request.body ?? {});
+      const resolvedRoot = normalizeWorkspaceRootPath(input.rootPath);
+      const rootPathKey = workspaceRootKey(resolvedRoot);
+      const expectedTarget = workspaceApprovalTarget(rootPathKey);
+      const approval = await getToolApproval(input.approvalId);
+
+      if (!approval) {
+        response.status(404).json({ error: "approval_not_found" });
+        return;
+      }
+
+      if (approval.status !== "approved") {
+        response.status(409).json({
+          error: "approval_not_approved",
+          approval
+        });
+        return;
+      }
+
+      if (
+        !WORKSPACE_REGISTER_TOOL_NAMES.has(approval.toolName) ||
+        !WORKSPACE_REGISTER_ACTION_TYPES.has(approval.actionType)
+      ) {
+        response.status(409).json({
+          error: "approval_not_for_workspace_register",
+          approval
+        });
+        return;
+      }
+
+      const approvalTargetKey = normalizeWorkspaceRegistrationTarget(approval.target);
+      if (approvalTargetKey !== rootPathKey) {
+        response.status(409).json({
+          error: "approval_target_mismatch",
+          expected: expectedTarget,
+          actual: approval.target,
+          approval
+        });
+        return;
+      }
+
+      const approvalCommand = normalizeApprovalCommand(approval.command);
+      const expectedCommand = `Register workspace ${resolvedRoot}`;
+      if (approvalCommand && approvalCommand !== expectedCommand) {
+        response.status(409).json({
+          error: "approval_command_mismatch",
+          expected: expectedCommand,
+          actual: approvalCommand,
+          approval
+        });
+        return;
+      }
+
+      const target = await resolveWorkspaceDirectoryTarget(resolvedRoot, ".");
+      const consumed = await consumeToolApproval({
+        approvalId: approval.id,
+        consumedBy: "workspace.register"
+      });
+      if (!consumed.changed || !consumed.approval) {
+        response.status(409).json({
+          error: "approval_not_consumable",
+          reason: consumed.reason,
+          approval: consumed.approval
+        });
+        return;
+      }
+
+      const workspace = await upsertRegisteredWorkspace({
+        rootPath: target.rootPath,
+        rootPathKey: workspaceRootKey(target.rootPath),
+        displayName: input.displayName,
+        approvalId: approval.id,
+        registeredBy: input.registeredBy ?? approval.decidedBy ?? null,
+        metadata: input.metadata
+      });
+
+      await appendJobEvent(
+        approval.jobId,
+        "tool.workspace_registered",
+        {
+          approvalId: approval.id,
+          workspaceId: workspace.id,
+          rootPath: workspace.rootPath,
+          rootPathKey: workspace.rootPathKey
+        },
+        {
+          actor: "workspace.register",
+          stageId: approval.stageId
+        }
+      );
+
+      response.status(201).json({
+        approval: consumed.approval,
+        workspace
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/workspaces/inspect", async (request, response, next) => {
     try {
       const query = workspaceRootQuerySchema.parse(request.query);
-      response.json(await inspectWorkspace(query.rootPath));
+      const rootPath = await requireRegisteredWorkspaceRoot(query.rootPath, response);
+      if (!rootPath) {
+        return;
+      }
+      response.json(await inspectWorkspace(rootPath));
     } catch (error) {
       next(error);
     }
@@ -1752,8 +1934,12 @@ async function main() {
   app.get("/workspaces/files", async (request, response, next) => {
     try {
       const query = workspaceFilesQuerySchema.parse(request.query);
+      const rootPath = await requireRegisteredWorkspaceRoot(query.rootPath, response);
+      if (!rootPath) {
+        return;
+      }
       response.json(
-        await listWorkspaceFiles(query.rootPath, {
+        await listWorkspaceFiles(rootPath, {
           subpath: query.subpath,
           depth: query.depth,
           limit: query.limit,
@@ -1768,8 +1954,12 @@ async function main() {
   app.get("/workspaces/file", async (request, response, next) => {
     try {
       const query = workspaceFileQuerySchema.parse(request.query);
+      const rootPath = await requireRegisteredWorkspaceRoot(query.rootPath, response);
+      if (!rootPath) {
+        return;
+      }
       response.json(
-        await readWorkspaceFile(query.rootPath, {
+        await readWorkspaceFile(rootPath, {
           subpath: query.subpath,
           maxBytes: query.maxBytes
         })
@@ -1782,7 +1972,11 @@ async function main() {
   app.post("/workspaces/file/write", async (request, response, next) => {
     try {
       const input = workspaceWriteFileSchema.parse(request.body ?? {});
-      const target = await prepareWorkspaceFileWrite(input.rootPath, {
+      const rootPath = await requireRegisteredWorkspaceRoot(input.rootPath, response);
+      if (!rootPath) {
+        return;
+      }
+      const target = await prepareWorkspaceFileWrite(rootPath, {
         subpath: input.subpath,
         mode: input.mode,
         createParents: input.createParents
@@ -1837,7 +2031,7 @@ async function main() {
         return;
       }
 
-      const result = await writeWorkspaceFile(input.rootPath, {
+      const result = await writeWorkspaceFile(rootPath, {
         subpath: input.subpath,
         content: input.content,
         mode: input.mode,
@@ -1873,7 +2067,11 @@ async function main() {
   app.post("/workspaces/command/run", async (request, response, next) => {
     try {
       const input = workspaceCommandRunSchema.parse(request.body ?? {});
-      const cwd = await resolveWorkspaceDirectoryTarget(input.rootPath, input.cwdSubpath ?? ".");
+      const rootPath = await requireRegisteredWorkspaceRoot(input.rootPath, response);
+      if (!rootPath) {
+        return;
+      }
+      const cwd = await resolveWorkspaceDirectoryTarget(rootPath, input.cwdSubpath ?? ".");
       const expectedTarget = cwd.relativePath || ".";
       const args = input.args ?? [];
       const displayCommand = formatWorkspaceCommand(input.command, args);
@@ -1938,7 +2136,7 @@ async function main() {
         return;
       }
 
-      const result = await runWorkspaceCommand(input.rootPath, {
+      const result = await runWorkspaceCommand(rootPath, {
         cwdSubpath: input.cwdSubpath,
         command: input.command,
         args,
@@ -2093,7 +2291,11 @@ async function main() {
   app.get("/workspaces/git/status", async (request, response, next) => {
     try {
       const query = workspaceRootQuerySchema.parse(request.query);
-      response.json(await getWorkspaceGitStatus(query.rootPath));
+      const rootPath = await requireRegisteredWorkspaceRoot(query.rootPath, response);
+      if (!rootPath) {
+        return;
+      }
+      response.json(await getWorkspaceGitStatus(rootPath));
     } catch (error) {
       next(error);
     }
@@ -2147,7 +2349,7 @@ async function main() {
     const result = await decideToolApproval({
       approvalId,
       status,
-      decidedBy: input.decidedBy ?? "desktop-app",
+      decidedBy: "desktop-app",
       decisionReason: input.decisionReason
     });
 
@@ -2159,6 +2361,14 @@ async function main() {
     if (result.reason === "not_pending") {
       response.status(409).json({
         error: "approval_not_pending",
+        approval: result.approval
+      });
+      return;
+    }
+
+    if (result.reason === "expired") {
+      response.status(409).json({
+        error: "approval_expired",
         approval: result.approval
       });
       return;
@@ -2207,6 +2417,14 @@ async function main() {
       if (result.reason === "not_approved") {
         response.status(409).json({
           error: "approval_not_approved",
+          approval: result.approval
+        });
+        return;
+      }
+
+      if (result.reason === "expired") {
+        response.status(409).json({
+          error: "approval_expired",
           approval: result.approval
         });
         return;

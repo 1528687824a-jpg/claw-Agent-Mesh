@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { launchDbos } from "../../orchestrator-api/src/dbos-runtime";
+import { launchDbos } from "./dbos-runtime";
 import { startScheduleRunner } from "./scheduler";
 
 function schedulerEnabled() {

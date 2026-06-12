@@ -23,6 +23,8 @@ type ProviderDraft = {
   apiKey: string;
 };
 
+let runtimeProviderApiKey = "";
+
 type ProviderConnectionResult = {
   ok: boolean;
   message?: string;
@@ -253,7 +255,15 @@ function loadSavedSetupPreview(): SavedSetupPreview | null {
 }
 
 function loadSavedProviderApiKey() {
-  return window.localStorage.getItem("honeycomb.providerApiKey") || "";
+  if (runtimeProviderApiKey) {
+    return runtimeProviderApiKey;
+  }
+  const legacyKey = window.localStorage.getItem("honeycomb.providerApiKey") || "";
+  if (legacyKey) {
+    window.localStorage.removeItem("honeycomb.providerApiKey");
+    runtimeProviderApiKey = legacyKey;
+  }
+  return runtimeProviderApiKey;
 }
 
 async function loadSavedProviderApiKeyFromDesktop() {
@@ -269,12 +279,13 @@ async function loadSavedProviderApiKeyFromDesktop() {
 async function saveProviderApiKey(apiKey: string) {
   const trimmed = apiKey.trim();
   if (!trimmed) return;
-  window.localStorage.setItem("honeycomb.providerApiKey", trimmed);
+  runtimeProviderApiKey = trimmed;
+  window.localStorage.removeItem("honeycomb.providerApiKey");
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("save_provider_api_key", { payload: trimmed });
   } catch {
-    // Browser smoke keeps the localStorage copy only.
+    // Browser smoke keeps a runtime-only copy; the desktop build stores it through Tauri.
   }
 }
 

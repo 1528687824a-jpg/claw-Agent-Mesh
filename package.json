@@ -28,6 +28,9 @@
     "smoke:m3-real-provider": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-m3-real-provider.ps1",
     "smoke:cancel-job": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-cancel-job.ps1",
     "smoke:timeline-since": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-timeline-since.ps1",
+    "smoke:workspace-registration": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-workspace-registration.ps1",
+    "smoke:security-controls": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-security-controls.ps1",
+    "smoke:secret-storage": "tsx scripts/smoke-secret-storage.ts",
     "smoke:list-jobs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-list-jobs.ps1",
     "smoke:experience-memory": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-experience-memory.ps1",
     "smoke:repair-cancelled-archives": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-repair-cancelled-archives.ps1",
@@ -43,6 +46,7 @@
     "maintenance:repair-cancelled-archives": "tsx scripts/repair-cancelled-archives.ts",
     "check:package-layout": "tsx scripts/check-package-layout.ts",
     "check:no-secrets": "tsx scripts/check-no-secrets.ts",
+    "test:unit": "node --import tsx --test tests/web-tools.test.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {

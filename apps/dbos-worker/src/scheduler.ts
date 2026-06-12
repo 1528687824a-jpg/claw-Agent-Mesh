@@ -9,7 +9,7 @@ import {
   patchScheduledTask
 } from "../../../packages/db/src/schedules";
 import type { ScheduledTaskRecord } from "../../../packages/shared/src/types";
-import { startJobWorkflow } from "../../orchestrator-api/src/dbos-runtime";
+import { startJobWorkflow } from "./dbos-runtime";
 
 type SchedulerResult = {
   scheduleId: string;

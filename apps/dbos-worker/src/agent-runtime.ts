@@ -3,7 +3,7 @@ import {
   getModelProvider,
   listAgentConfigs
 } from "../../../packages/db/src/config-registry";
-import { readProviderApiKey } from "../../orchestrator-api/src/local-secrets";
+import { readProviderApiKey } from "../../../packages/runtime/src/local-secrets";
 import type { AgentConfigRecord, ModelProviderRecord } from "../../../packages/shared/src/types";
 
 export type AgentRuntimeRoute = {

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setJobWorkflowId } from "../../../packages/db/src/jobs";
-import { JobPipelineWorkflow } from "../../dbos-worker/src/workflows";
+import { JobPipelineWorkflow } from "./workflows";
 
 const DEFAULT_DATABASE_URL = "postgresql://temporal:temporal@localhost:5432/temporal";
 

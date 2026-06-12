@@ -667,6 +667,41 @@ export type WorkspaceGitChange = {
 
 export type WorkspaceWriteMode = "create" | "overwrite" | "append";
 
+export type WorkspaceRegistrationRecord = {
+  id: string;
+  rootPath: string;
+  rootPathKey: string;
+  displayName: string | null;
+  enabled: boolean;
+  approvalId: string | null;
+  registeredBy: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+};
+
+export type ListRegisteredWorkspacesInput = {
+  enabled?: boolean;
+};
+
+export type ListRegisteredWorkspacesResponse = {
+  workspaces: WorkspaceRegistrationRecord[];
+};
+
+export type RegisterWorkspaceInput = {
+  rootPath: string;
+  displayName?: string | null;
+  approvalId: string;
+  registeredBy?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type RegisterWorkspaceResponse = {
+  approval: ToolApprovalRecord;
+  workspace: WorkspaceRegistrationRecord;
+};
+
 export type WorkspaceInspectResponse = {
   rootPath: string;
   exists: boolean;
@@ -1381,6 +1416,19 @@ export async function triggerScheduledTask(
       body: JSON.stringify(input)
     }
   );
+}
+
+export async function listRegisteredWorkspaces(input: ListRegisteredWorkspacesInput = {}) {
+  const params = new URLSearchParams();
+  appendSearchParams(params, input);
+  return request<ListRegisteredWorkspacesResponse>(`/workspaces?${params.toString()}`);
+}
+
+export async function registerWorkspace(input: RegisterWorkspaceInput) {
+  return request<RegisterWorkspaceResponse>("/workspaces/register", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
 }
 
 export async function inspectWorkspace(rootPath: string) {

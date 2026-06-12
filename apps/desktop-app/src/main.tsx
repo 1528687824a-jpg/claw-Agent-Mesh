@@ -963,16 +963,29 @@ function loadAgentModelConfigs(): Record<string, AgentModelConfig> {
 }
 
 function saveAgentModelConfigs(configs: Record<string, AgentModelConfig>) {
-  window.localStorage.setItem("honeycomb.agentModelConfigs", JSON.stringify(configs));
+  const redacted = Object.fromEntries(
+    Object.entries(configs).map(([agentId, config]) => [
+      agentId,
+      {
+        ...config,
+        apiKey: "",
+        apiKeyConfigured: config.apiKeyConfigured === true || Boolean(config.apiKey.trim())
+      }
+    ])
+  );
+  window.localStorage.setItem("honeycomb.agentModelConfigs", JSON.stringify(redacted));
 }
 
 async function loadProviderApiKeyFromDesktop() {
   const result = await invokeDesktopCommand<string | null>("load_provider_api_key");
   if (result.available && "value" in result && result.value) {
-    window.localStorage.setItem("honeycomb.providerApiKey", result.value);
     return result.value;
   }
-  return window.localStorage.getItem("honeycomb.providerApiKey") || "";
+  const legacy = window.localStorage.getItem("honeycomb.providerApiKey") || "";
+  if (legacy) {
+    window.localStorage.removeItem("honeycomb.providerApiKey");
+  }
+  return legacy;
 }
 
 async function loadAgentModelConfigsFromDesktop() {
@@ -1227,6 +1240,7 @@ function App() {
   const [securityRecoveryOpen, setSecurityRecoveryOpen] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState("");
   const [settingsError, setSettingsError] = useState("");
+  const [providerApiKey, setProviderApiKey] = useState("");
   const [agentModelConfigs, setAgentModelConfigs] = useState<Record<string, AgentModelConfig>>(loadAgentModelConfigs);
   const [expandedAgentId, setExpandedAgentId] = useState("");
   const [agentConfigDraft, setAgentConfigDraft] = useState<AgentConfigDraft>({
@@ -1336,17 +1350,18 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     async function syncAgentConfigs() {
-      const [desktopConfigs, providerApiKey] = await Promise.all([
+      const [desktopConfigs, loadedProviderApiKey] = await Promise.all([
         loadAgentModelConfigsFromDesktop(),
         loadProviderApiKeyFromDesktop()
       ]);
       if (cancelled) return;
+      setProviderApiKey(loadedProviderApiKey);
       setAgentModelConfigs((current) => {
         const merged = { ...current, ...desktopConfigs };
         const provider = firstRunPreview?.provider;
-        if (provider?.apiKeyConfigured || providerApiKey) {
+        if (provider?.apiKeyConfigured || loadedProviderApiKey) {
           const existing = merged["panel-supervisor-agent"];
-          const apiKey = existing?.apiKey || providerApiKey;
+          const apiKey = existing?.apiKey || loadedProviderApiKey;
           const model = existing?.model || provider?.model || "";
           const providerReference = resolveProviderForAgent(model, existing, firstRunPreview);
           merged["panel-supervisor-agent"] = {
@@ -2491,9 +2506,7 @@ function App() {
 
   function openAgentConfig(agentId: string) {
     const existing = agentModelConfigs[agentId];
-    const inheritedApiKey = agentId === "panel-supervisor-agent"
-      ? window.localStorage.getItem("honeycomb.providerApiKey") || ""
-      : "";
+    const inheritedApiKey = agentId === "panel-supervisor-agent" ? providerApiKey : "";
     const model = existing?.model || firstRunPreview?.provider?.model || "";
     const providerReference = resolveProviderForAgent(model, existing, firstRunPreview);
     setExpandedAgentId((current) => (current === agentId ? "" : agentId));
@@ -2520,9 +2533,7 @@ function App() {
     setAgentConfigError("");
     setAgentConfigMessage(copy.agentConfigSaving);
     const existing = agentModelConfigs[agentId];
-    const inheritedApiKey = agentId === "panel-supervisor-agent"
-      ? window.localStorage.getItem("honeycomb.providerApiKey") || ""
-      : "";
+    const inheritedApiKey = agentId === "panel-supervisor-agent" ? providerApiKey : "";
     const apiKey = agentConfigDraft.apiKey.trim() || existing?.apiKey?.trim() || inheritedApiKey;
     const model = agentConfigDraft.model.trim();
     if (!model || !apiKey) {
@@ -2558,8 +2569,8 @@ function App() {
       setAgentModelConfigs(nextConfigs);
       setAgentConfigDraft(savedConfig);
       if (agentId === "panel-supervisor-agent") {
-        window.localStorage.setItem("honeycomb.providerApiKey", apiKey);
         void invokeDesktopCommand("save_provider_api_key", { payload: apiKey });
+        setProviderApiKey(apiKey);
       }
       setAgentConfigMessage(copy.agentConfigSaved);
     } catch {
@@ -2637,7 +2648,7 @@ function App() {
             const savedHasKey = Boolean(savedConfig?.apiKey?.trim());
             const providerKeyConfigured = agent.id === "panel-supervisor-agent" &&
               firstRunPreview?.provider?.apiKeyConfigured === true &&
-              Boolean(window.localStorage.getItem("honeycomb.providerApiKey"));
+              Boolean(providerApiKey.trim());
             const configured = agent.id === "panel-supervisor-agent"
               ? savedHasKey || providerKeyConfigured
               : savedHasKey;

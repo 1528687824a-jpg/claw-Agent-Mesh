@@ -532,3 +532,17 @@ export type FinalQualityGateResult = {
   reportPath: string;
   groupMessageId: string;
 };
+
+export type WorkspaceRegistrationRecord = {
+  id: string;
+  rootPath: string;
+  rootPathKey: string;
+  displayName: string | null;
+  enabled: boolean;
+  approvalId: string | null;
+  registeredBy: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+};

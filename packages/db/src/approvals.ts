@@ -9,6 +9,8 @@ import {
 import { appendJobEvent, getJob, getJobBySessionId } from "./jobs";
 import { pool } from "./pool";
 
+const DEFAULT_APPROVAL_TTL_MS = Number(process.env.HONEYCOMB_APPROVAL_TTL_MS ?? 15 * 60 * 1000);
+
 function normalizeApprovalStatus(value: unknown): ToolApprovalStatus {
   return typeof value === "string" && (TOOL_APPROVAL_STATUSES as readonly string[]).includes(value)
     ? (value as ToolApprovalStatus)
@@ -58,6 +60,52 @@ async function resolveJob(input: { jobId?: string; sessionId?: string }) {
   }
 
   return null;
+}
+
+function defaultExpiresAt() {
+  const ttlMs = Number.isFinite(DEFAULT_APPROVAL_TTL_MS) && DEFAULT_APPROVAL_TTL_MS > 0
+    ? DEFAULT_APPROVAL_TTL_MS
+    : 15 * 60 * 1000;
+  return new Date(Date.now() + ttlMs).toISOString();
+}
+
+function isApprovalExpired(approval: ToolApprovalRecord, now = new Date()) {
+  return approval.expiresAt ? Date.parse(approval.expiresAt) <= now.getTime() : false;
+}
+
+async function markToolApprovalExpired(approvalId: string): Promise<ToolApprovalRecord | null> {
+  const result = await pool.query(
+    `update agent.tool_approval_requests
+     set status = 'expired',
+         updated_at = now()
+     where id = $1
+       and status in ('pending', 'approved')
+       and expires_at is not null
+       and expires_at <= now()
+     returning *`,
+    [approvalId]
+  );
+
+  if (!result.rows[0]) {
+    return getToolApproval(approvalId);
+  }
+
+  const approval = toToolApprovalRecord(result.rows[0]);
+  await appendJobEvent(
+    approval.jobId,
+    "tool.approval_expired",
+    {
+      approvalId: approval.id,
+      toolName: approval.toolName,
+      actionType: approval.actionType,
+      riskLevel: approval.riskLevel
+    },
+    {
+      actor: "tool-gateway",
+      stageId: approval.stageId
+    }
+  );
+  return approval;
 }
 
 export async function createToolApprovalRequest(input: {
@@ -119,7 +167,7 @@ export async function createToolApprovalRequest(input: {
       input.target ?? null,
       JSON.stringify(input.input ?? {}),
       JSON.stringify(input.policy ?? {}),
-      input.expiresAt ?? null
+      input.expiresAt ?? defaultExpiresAt()
     ]
   );
 
@@ -226,7 +274,7 @@ export async function decideToolApproval(input: {
 }): Promise<{
   approval: ToolApprovalRecord | null;
   changed: boolean;
-  reason: "not_found" | "not_pending" | "updated";
+  reason: "not_found" | "not_pending" | "expired" | "updated";
 }> {
   const existing = await getToolApproval(input.approvalId);
   if (!existing) {
@@ -242,6 +290,14 @@ export async function decideToolApproval(input: {
       approval: existing,
       changed: false,
       reason: "not_pending"
+    };
+  }
+
+  if (isApprovalExpired(existing)) {
+    return {
+      approval: await markToolApprovalExpired(input.approvalId),
+      changed: true,
+      reason: "expired"
     };
   }
 
@@ -296,7 +352,7 @@ export async function consumeToolApproval(input: {
 }): Promise<{
   approval: ToolApprovalRecord | null;
   changed: boolean;
-  reason: "not_found" | "not_approved" | "updated";
+  reason: "not_found" | "not_approved" | "expired" | "updated";
 }> {
   const existing = await getToolApproval(input.approvalId);
   if (!existing) {
@@ -312,6 +368,14 @@ export async function consumeToolApproval(input: {
       approval: existing,
       changed: false,
       reason: "not_approved"
+    };
+  }
+
+  if (isApprovalExpired(existing)) {
+    return {
+      approval: await markToolApprovalExpired(input.approvalId),
+      changed: true,
+      reason: "expired"
     };
   }
 
@@ -361,7 +425,7 @@ export async function expirePendingToolApprovals(now = new Date()): Promise<numb
     `update agent.tool_approval_requests
      set status = 'expired',
          updated_at = now()
-     where status = 'pending'
+     where status in ('pending', 'approved')
        and expires_at is not null
        and expires_at <= $1::timestamptz`,
     [now.toISOString()]

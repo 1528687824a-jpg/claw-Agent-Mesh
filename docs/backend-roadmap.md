@@ -31,10 +31,12 @@ changes land.
    - Repair script for cancelled archive cleanup.
 
 5. Workspace read APIs
+   - Registered workspace root list and approval-gated registration.
    - Workspace inspect.
    - File tree listing.
    - File read with binary detection and size limits.
    - Git status.
+   - Workspace reads/writes/commands/git status now require a registered root.
 
 6. Human approval ledger
    - Tool approval request table.
@@ -102,6 +104,24 @@ changes land.
    - Docker API and Postgres ports are published only on `127.0.0.1`.
    - Source/dev and Docker smoke tests assert that unauthenticated business API
      requests are rejected.
+   - Workspace filesystem APIs require a registered root. First registration is
+     approval-gated through `workspace.register`.
+   - Provider and agent API keys are stored outside JSON config through a local
+     secret boundary; Windows uses DPAPI and legacy plaintext files are migrated
+     on read.
+   - Tool approvals now receive a default expiry, approved requests expire
+     before consumption, and API approval decisions record the desktop approval
+     boundary instead of trusting the client-provided decider.
+   - Web fetch resolves and pins the connect IP for each request/redirect while
+     keeping Host/SNI on the original hostname, closing the DNS rebinding
+     check/connect gap.
+
+14. Backend source hygiene
+   - Worker no longer imports source files from the orchestrator API app.
+   - Shared local secret handling now lives in `packages/runtime`.
+   - DBOS workflow launch helpers live with the worker runtime.
+   - A first `node:test` unit test entry covers web fetch URL normalization,
+     private-network blocking, and approved private fetch behavior.
 
 ## Partial Or Not Yet Real Enough
 
@@ -192,12 +212,18 @@ changes land.
 10. Security hardening from `HONEYC~2.MD`
    - S1 API bearer token and local-only Docker/Postgres port publishing are
      implemented.
-   - S2 registered workspace root whitelist is still missing.
-   - S4 OS keychain/DPAPI encryption for saved API keys is still missing.
-   - S5 approval expiry, stronger decided-by trust boundary, and tighter
-     consume semantics still need review.
-   - S6 DNS rebinding TOCTOU mitigation needs hostname/IP pinning across fetch
-     connect time.
+   - S2 registered workspace root whitelist and approval-gated first
+     registration are implemented.
+   - S4 Windows DPAPI encryption for saved provider/agent API keys is
+     implemented; macOS/Linux keychain support remains a cross-platform release
+     item.
+   - S5 default approval expiry, approved-before-consume expiry checks, and a
+     tighter desktop decision actor boundary are implemented.
+   - S6 web fetch hostname/IP pinning is implemented for initial requests and
+     redirects.
+   - Worker-to-API reverse imports for runtime/secret helpers are removed.
+   - Unit test coverage has started with web fetch safety behavior; the large
+     API and desktop modules still need further extraction into tested units.
 
 ## Work Order
 
@@ -247,10 +273,13 @@ changes land.
 
 6. Security baseline before broader tool exposure.
    - Enforce local API auth and avoid LAN-exposed development services.
-   - Status: partial done. Non-health API routes now require a bearer token,
+   - Status: done for the current Windows-local baseline. Non-health API routes now require a bearer token,
      desktop/dev launchers generate and inject that token, and Docker API /
-     Postgres ports bind to `127.0.0.1`; registered workspace roots, OS
-     keychain storage, approval expiry, and DNS pinning remain.
+     Postgres ports bind to `127.0.0.1`; registered workspace roots and
+     approval-gated workspace registration now exist. Provider/agent API keys
+     use DPAPI on Windows, approval expiry is enforced before decisions and
+     consumption, and web fetch pins the resolved connect IP. Cross-platform
+     keychain support is still needed before macOS/Linux release builds.
 
 7. Add desktop approval UI.
    - Queue, detail, approve/reject/cancel.
@@ -297,16 +326,15 @@ changes land.
 
 ## Current Next Step
 
-Finish the remaining `HONEYC~2.MD` security hardening first: registered
-workspace root whitelist, OS keychain/DPAPI secret storage, approval expiry /
-trust-boundary tightening, and DNS pinning for web fetch. After that, implement
-approval-gated search/browser calls, MCP session reuse, schedule
-configuration UI, and packaged OpenClaw launch/restart integration. The
+The `HONEYC~2.MD` P0 Windows-local security hardening is now closed for S1,
+S2, S4, S5, and S6. Next, implement approval-gated search/browser calls, MCP
+session reuse, schedule configuration UI, packaged OpenClaw launch/restart
+integration, and the server/module test split called out by the review. The
 backend approval ledger, approval-gated local tools, approval-gated web fetch,
 approval-gated MCP tools/list/resources/list/tools/call, desktop approval queue,
 provider registry, agent registry, worker provider/agent routing, OpenClaw
 prompt/config sync, Skills/MCP registry foundation, per-agent MCP policy,
 scheduled task runner, and diagnostics surface now exist; the next highest-value
-slices are closing the remaining security review items, extending the same
-approval pattern to search/browser tools, and proving a real OpenClaw provider
-end-to-end.
+slices are extending the same approval pattern to search/browser tools, proving
+a real OpenClaw provider end-to-end, and separating the large API/desktop files
+into tested modules.

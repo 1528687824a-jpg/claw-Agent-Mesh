@@ -284,6 +284,19 @@ const statements = [
     updated_at timestamptz not null default now(),
     unique(agent_config_id, mcp_server_id)
   )`,
+  `create table if not exists agent.registered_workspaces (
+    id text primary key,
+    root_path text not null,
+    root_path_key text not null unique,
+    display_name text,
+    enabled boolean not null default true,
+    approval_id text references agent.tool_approval_requests(id),
+    registered_by text,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    last_used_at timestamptz
+  )`,
   `create table if not exists agent.scheduled_tasks (
     id text primary key,
     title text not null,
@@ -384,6 +397,8 @@ const statements = [
     on agent.agent_mcp_policies(agent_config_id, enabled, updated_at desc)`,
   `create index if not exists agent_mcp_policies_server_idx
     on agent.agent_mcp_policies(mcp_server_id, enabled, updated_at desc)`,
+  `create index if not exists registered_workspaces_enabled_idx
+    on agent.registered_workspaces(enabled, updated_at desc)`,
   `create index if not exists scheduled_tasks_enabled_next_run_idx
     on agent.scheduled_tasks(enabled, next_run_at)
     where next_run_at is not null`,

@@ -84,8 +84,8 @@ const capabilities: RuntimeCapability[] = [
   {
     id: "local_api_security",
     title: "Local API security baseline",
-    status: "partial",
-    summary: "Non-health routes require a local Honeycomb bearer token, and Docker API/Postgres ports are published only on 127.0.0.1; remaining security review items are tracked.",
+    status: "ready",
+    summary: "Non-health routes require a local Honeycomb bearer token, workspace roots are registered through approval, Windows API keys use DPAPI, approvals expire, and web fetch pins DNS targets.",
     routes: [
       "GET /health",
       "all non-health API routes"
@@ -97,16 +97,21 @@ const capabilities: RuntimeCapability[] = [
       "Desktop API client injects the token automatically",
       "Docker API port binds to 127.0.0.1:3000",
       "Docker Postgres port binds to 127.0.0.1:5432",
-      "Source and Docker smoke tests assert missing-token rejection"
+      "Source and Docker smoke tests assert missing-token rejection",
+      "Workspace APIs require a registered root",
+      "First workspace registration is approval-gated",
+      "Windows provider and agent API keys are stored through DPAPI-backed local secret files",
+      "Legacy plaintext provider/agent key files migrate on read",
+      "Tool approvals get default expiry and approved approvals expire before consumption",
+      "API approval decisions record the desktop approval actor instead of trusting client-provided decidedBy",
+      "Web fetch resolves and pins the connect IP for every request and redirect"
     ],
     missing: [
-      "Registered workspace root whitelist",
-      "OS keychain/DPAPI encryption for saved API keys",
-      "Approval expiry and stronger decided-by trust boundary",
-      "DNS pinning for web fetch connect-time revalidation"
+      "macOS/Linux keychain integration before cross-platform release",
+      "Signed/attested desktop identity for multi-user or remote approval scenarios"
     ],
     nextActions: [
-      "Close the remaining HONEYC~2.MD S2/S4/S5/S6 security items before expanding search/browser tool exposure"
+      "Keep the same approval and network gateway pattern for search/browser tools"
     ]
   },
   {
@@ -162,6 +167,8 @@ const capabilities: RuntimeCapability[] = [
     status: "ready",
     summary: "Workspace inspect, list, read, git status, approval-gated file write, and approval-gated command run are implemented.",
     routes: [
+      "GET /workspaces",
+      "POST /workspaces/register",
       "GET /workspaces/inspect",
       "GET /workspaces/files",
       "GET /workspaces/file",
@@ -170,6 +177,8 @@ const capabilities: RuntimeCapability[] = [
       "GET /workspaces/git/status"
     ],
     implemented: [
+      "Registered workspace root whitelist",
+      "Approval-gated workspace registration",
       "Path traversal protection",
       "File read limits",
       "Approval-gated file writes",
@@ -348,7 +357,7 @@ const capabilities: RuntimeCapability[] = [
     id: "web_network_tools",
     title: "Web/MCP/network tool gateway",
     status: "partial",
-    summary: "Approval-gated web fetch is implemented with URL matching, timeout/output caps, redirect checks, private-network blocking, and audit events; browser/search/MCP execution still needs safe gateways.",
+    summary: "Approval-gated web fetch is implemented with URL matching, timeout/output caps, DNS-pinned redirect checks, private-network blocking, and audit events; browser/search/MCP execution still needs safe gateways.",
     routes: [
       "POST /tools/web/fetch"
     ],
@@ -358,7 +367,7 @@ const capabilities: RuntimeCapability[] = [
       "Approval target and command matching",
       "Timeout and output caps",
       "Private-network target blocking unless explicitly allowed",
-      "Redirect target revalidation",
+      "Redirect target revalidation with DNS-pinned connect IPs",
       "Network audit events"
     ],
     missing: [
@@ -422,6 +431,28 @@ const capabilities: RuntimeCapability[] = [
     ]
   },
   {
+    id: "source_hygiene",
+    title: "Source hygiene and tests",
+    status: "partial",
+    summary: "Worker-to-API reverse imports are removed for runtime/secret helpers, and the first unit test entry covers web fetch safety behavior.",
+    routes: [],
+    implemented: [
+      "Shared local secret helpers live in packages/runtime",
+      "Worker DBOS launch helpers live with the worker runtime",
+      "Worker source no longer imports orchestrator-api/src",
+      "node:test unit script exists",
+      "Web fetch unit tests cover URL normalization, private blocking, and explicit private fetch"
+    ],
+    missing: [
+      "server.ts route modules are still too large",
+      "desktop main.tsx is still too large",
+      "Broader unit coverage for approvals, workspaces, providers, and sync"
+    ],
+    nextActions: [
+      "Split server routes by domain and add focused unit tests around each extracted module"
+    ]
+  },
+  {
     id: "installer_diagnostics",
     title: "Installer and runtime diagnostics",
     status: "partial",
@@ -462,10 +493,10 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     summary,
     capabilities,
     recommendedNext: [
-      "Finish HONEYC~2.MD security hardening: workspace root whitelist, keychain storage, approval expiry, and DNS pinning",
       "Approval-gated search/browser tool calls, MCP session reuse, and per-agent network policy",
       "Schedule configuration UI",
-      "Packaged OpenClaw launch/restart command defaults and real E2E regression"
+      "Packaged OpenClaw launch/restart command defaults and real E2E regression",
+      "Split the large API/desktop modules into smaller tested modules"
     ]
   };
 }
