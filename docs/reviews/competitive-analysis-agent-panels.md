@@ -97,3 +97,10 @@
 - Runtime diagnostics now use the same live provider secret-state reconciliation as `/providers`, so diagnostics will not claim real-provider readiness from stale key flags.
 - Added a dedicated `real_provider_e2e` diagnostic check. It requires a ready OpenClaw runtime, synced required agents, and at least one verified live external provider; localhost and `*.invalid` fake providers are excluded from real E2E readiness.
 - Verification added: `npm run smoke:runtime-diagnostics-readiness` creates a temporary stale provider secret, restarts the API, and verifies diagnostics report the missing secret plus a real-provider E2E warning.
+
+## 2026-06-12 Update 8
+
+- Runtime diagnostics now has a first repair-action backend: `GET /runtime/repair/actions` lists available actions and `POST /runtime/repair` executes them.
+- First repair actions implemented: reconcile provider secret status, prepare/start OpenClaw runtime, restart OpenClaw runtime, seed default Honeycomb agents, and apply OpenClaw sync files.
+- Verification added: `npm run smoke:runtime-repair-actions` exercises the catalog and executes real repair actions against a temporary provider/runtime root, including stale secret reconciliation and OpenClaw prompt/config file generation.
+- Remaining repair work: desktop diagnostics UI wiring plus more targeted WSL/Docker/database/MCP repair actions.

@@ -475,7 +475,9 @@ const capabilities: RuntimeCapability[] = [
     status: "partial",
     summary: "Launcher, package checks, runtime diagnostics aggregate, and real-provider E2E readiness diagnostics exist; repair actions and installer validation are still incomplete.",
     routes: [
-      "GET /runtime/diagnostics"
+      "GET /runtime/diagnostics",
+      "GET /runtime/repair/actions",
+      "POST /runtime/repair"
     ],
     implemented: [
       "Desktop launcher repair",
@@ -483,14 +485,17 @@ const capabilities: RuntimeCapability[] = [
       "No-secret scan",
       "Windows local Tauri shell smoke",
       "Runtime diagnostics aggregate for database, capabilities, OpenClaw, providers, agents, approvals, Skills/MCP, and schedules",
-      "Runtime diagnostics reconcile provider secret state and report real-provider E2E readiness without counting local/fake providers as live external providers"
+      "Runtime diagnostics reconcile provider secret state and report real-provider E2E readiness without counting local/fake providers as live external providers",
+      "Repair action catalog and execution API",
+      "Repair actions for provider secret reconciliation, OpenClaw runtime start/restart, default agent seeding, and OpenClaw sync apply"
     ],
     missing: [
-      "Repair action API",
+      "Desktop diagnostics UI for repair action execution",
+      "More targeted repair actions for WSL/Docker/database/MCP failures",
       "Cross-platform installer validation"
     ],
     nextActions: [
-      "Add repair actions for common runtime diagnostics failures"
+      "Wire repair actions into the desktop diagnostics UI"
     ]
   }
 ];

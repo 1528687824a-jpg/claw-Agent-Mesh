@@ -181,6 +181,11 @@ import {
 import { closeAllMcpSessions, invalidateMcpSession } from "./mcp-sessions";
 import { closePool } from "../../../packages/db/src/pool";
 import { getRuntimeDiagnostics } from "./runtime-diagnostics";
+import {
+  listRuntimeRepairActions,
+  RUNTIME_REPAIR_ACTION_IDS,
+  runRuntimeRepairAction
+} from "./runtime-repair";
 
 const unstickModelCallSchema = z.object({
   jobId: z.string().min(1),
@@ -211,6 +216,16 @@ const runtimeUsageQuerySchema = z.object({
 
 const runtimeDiagnosticsQuerySchema = z.object({
   openClawRootPath: z.string().trim().min(1).max(2000).optional()
+});
+
+const runtimeRepairSchema = z.object({
+  action: z.enum(RUNTIME_REPAIR_ACTION_IDS),
+  rootPath: z.string().trim().min(1).max(2000).optional(),
+  timeoutMs: z.number().int().min(1000).max(300000).optional(),
+  providerId: z.string().trim().min(1).max(160).nullable().optional(),
+  model: z.string().trim().min(1).max(300).nullable().optional(),
+  panelAgentName: z.string().trim().min(1).max(200).optional(),
+  allowDiscoveredUserRuntime: z.boolean().optional()
 });
 
 const openClawRuntimeQuerySchema = z.object({
@@ -1016,6 +1031,22 @@ async function main() {
     try {
       const query = runtimeDiagnosticsQuerySchema.parse(request.query);
       response.json(await getRuntimeDiagnostics(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/runtime/repair/actions", (_request, response) => {
+    response.json({
+      actions: listRuntimeRepairActions()
+    });
+  });
+
+  app.post("/runtime/repair", async (request, response, next) => {
+    try {
+      const input = runtimeRepairSchema.parse(request.body ?? {});
+      const repair = await runRuntimeRepairAction(input);
+      response.status(repair.ok ? 200 : 409).json(repair);
     } catch (error) {
       next(error);
     }

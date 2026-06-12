@@ -269,8 +269,11 @@ changes land.
    - Runtime diagnostics now reconcile provider key status with live local
      secret storage and include a real-provider E2E readiness check that does
      not count localhost/example fake providers as live external providers.
-   - Full installer readiness, Docker/WSL checks, and repair actions still need
-     deeper backend diagnostics.
+   - Runtime repair API now exposes a repair action catalog and can reconcile
+     provider secret state, prepare/restart the builtin OpenClaw runtime, seed
+     default agents, and apply OpenClaw sync.
+   - Full installer readiness, Docker/WSL checks, MCP/database repair actions,
+     and desktop repair UI still need deeper work.
 
 10. Security hardening from `HONEYC~2.MD`
    - S1 API bearer token and local-only Docker/Postgres port publishing are
@@ -398,8 +401,10 @@ changes land.
     - Safe repair actions.
     - Status: partial done. Runtime diagnostics aggregate exists, provider
       secret-state reconciliation is included, and real-provider E2E readiness
-      is explicit; repair actions and deeper installer checks still need
-      implementation.
+      is explicit. First repair actions now exist for provider secret
+      reconciliation, OpenClaw runtime control, default agent seeding, and
+      OpenClaw sync apply; desktop repair UI and deeper WSL/Docker/database/MCP
+      repairs still need implementation.
 
 ## Current Next Step
 
