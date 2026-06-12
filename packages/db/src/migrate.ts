@@ -26,7 +26,23 @@ const statements = [
   `alter table agent.jobs add column if not exists retention_until timestamptz`,
   `alter table agent.jobs add column if not exists cleanup_status text not null default 'active'`,
   `alter table agent.jobs add column if not exists retention_policy jsonb not null default '{}'`,
+  `alter table agent.jobs add column if not exists heartbeat_at timestamptz`,
+  `alter table agent.jobs add column if not exists heartbeat_status text not null default 'unknown'`,
+  `alter table agent.jobs add column if not exists heartbeat_source text`,
+  `alter table agent.jobs add column if not exists heartbeat_note text`,
+  `alter table agent.jobs add column if not exists stalled_at timestamptz`,
   `update agent.jobs set session_id = id where session_id is null`,
+  `update agent.jobs
+   set heartbeat_at = coalesce(heartbeat_at, updated_at, created_at),
+       heartbeat_status = case
+         when status in ('succeeded', 'failed', 'cancelled') then 'terminal'
+         when status = 'waiting_for_human' then 'paused'
+         when heartbeat_status = 'unknown' then 'healthy'
+         else heartbeat_status
+       end,
+       heartbeat_source = coalesce(heartbeat_source, 'migration.backfill')
+   where heartbeat_at is null
+      or heartbeat_status = 'unknown'`,
   `create unique index if not exists jobs_session_id_idx
     on agent.jobs(session_id)
     where session_id is not null`,
@@ -343,6 +359,11 @@ const statements = [
   `create index if not exists jobs_retention_until_cleanup_status_idx
     on agent.jobs(retention_until, cleanup_status)
     where archived_at is not null`,
+  `create index if not exists jobs_heartbeat_status_at_idx
+    on agent.jobs(heartbeat_status, heartbeat_at)`,
+  `create index if not exists jobs_stalled_at_idx
+    on agent.jobs(stalled_at desc)
+    where stalled_at is not null`,
   `create index if not exists artifacts_job_id_created_at_idx
     on agent.artifacts(job_id, created_at)`,
   `create index if not exists job_stages_job_id_stage_index_idx

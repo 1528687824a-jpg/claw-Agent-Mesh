@@ -27,6 +27,10 @@ changes land.
    - Session events SSE stream for live UI updates.
    - Runtime diagnostics aggregate through `GET /runtime/diagnostics`,
      including open MCP session stats.
+   - Job heartbeat summary and stalled-job scan are available through
+     `GET /runtime/heartbeats` and `POST /runtime/heartbeats/scan`; worker
+     activities update heartbeat source/status around planning, OpenClaw
+     calls, testing, fixing, and finalization.
 
 3. Plans and Todo
    - Job plan creation.
@@ -269,6 +273,8 @@ changes land.
    - Runtime diagnostics now reconcile provider key status with live local
      secret storage and include a real-provider E2E readiness check that does
      not count localhost/example fake providers as live external providers.
+   - Runtime diagnostics now include `job_heartbeats`, reporting expired
+     active heartbeats and jobs already marked `stalled`.
    - Runtime repair API now exposes a repair action catalog and can reconcile
      provider secret state, prepare/restart the builtin OpenClaw runtime, seed
      default agents, apply OpenClaw sync, run idempotent database migrations,
@@ -416,6 +422,10 @@ changes land.
       real-provider E2E readiness now requires the configured WSL distro.
       Safe WSL/Docker repair actions (mutating) are still deliberately not
       implemented until a safer installer strategy is designed.
+      Job heartbeat/stall detection also exists now: `GET /runtime/heartbeats`
+      reads active/stale/stalled counts, `POST /runtime/heartbeats/scan`
+      marks expired active jobs as `stalled` without cancelling or deleting
+      them, and `npm run smoke:job-heartbeats` validates the path.
 
 ## Current Next Step: Staged Work Plan (2026-06-12)
 
@@ -429,9 +439,10 @@ deliberately the LAST stage (user decision: finish the product first).
    Blocked on the user re-entering and verifying a real external provider
    API key; the `real_provider_e2e` diagnostic lists exactly what is
    missing. Fix whatever the first real runs expose.
-2. Job heartbeat/stall detection: detect running jobs that stop producing
-   events/model-calls and surface alive-but-stuck states (DBOS only covers
-   crash recovery). Real long tasks will hit this first.
+2. Job heartbeat/stall detection: done. Jobs store heartbeat time/status/source
+   and stalledAt; worker activities update heartbeat around long steps; API
+   and diagnostics expose the state; the smoke test creates an expired running
+   job and verifies scan/diagnostics behavior.
 3. Desktop system notifications for job completion/failure and pending
    approvals (small; makes real long-running use bearable).
 

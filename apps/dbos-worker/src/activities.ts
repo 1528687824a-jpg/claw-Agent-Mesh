@@ -5,6 +5,7 @@ import {
   appendJobEvent,
   archiveJobSession,
   getJob,
+  recordJobHeartbeat,
   setJobFinalOutput,
   setJobStatus,
   setJobWorkdir
@@ -70,6 +71,15 @@ type OpenClawActionType =
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+async function heartbeat(jobId: string, source: string, note?: string | null, stageId?: string | null) {
+  await recordJobHeartbeat({
+    jobId,
+    source,
+    note,
+    stageId: stageId ?? null
+  });
 }
 
 function stageTypeToAgentType(stageType: string) {
@@ -150,6 +160,12 @@ async function runOpenClawAgentIdempotent(input: {
   const redactedRouteCandidates = routes.map(redactAgentRuntime);
 
   if (existing?.status === "succeeded") {
+    await heartbeat(
+      input.jobId,
+      `openclaw.${input.actionType}.reused`,
+      input.agentId,
+      input.stageId ?? null
+    );
     await appendJobEvent(
       input.jobId,
       "tool.openclaw_agent_reused",
@@ -179,6 +195,12 @@ async function runOpenClawAgentIdempotent(input: {
     );
   }
 
+  await heartbeat(
+    input.jobId,
+    `openclaw.${input.actionType}.starting`,
+    input.agentId,
+    input.stageId ?? null
+  );
   await markModelCallStarted({
     idempotencyKey,
     jobId: input.jobId,
@@ -224,6 +246,12 @@ async function runOpenClawAgentIdempotent(input: {
           throw new Error(readinessError);
         }
 
+        await heartbeat(
+          input.jobId,
+          `openclaw.${input.actionType}.route_started`,
+          `${route.honeycombAgentId} route ${routeIndex + 1}/${routes.length}`,
+          input.stageId ?? null
+        );
         const result = await runOpenClawAgent({
           agentId: route.openclawAgentId,
           sessionId: input.sessionId,
@@ -283,6 +311,12 @@ async function runOpenClawAgentIdempotent(input: {
             stageId: input.stageId ?? null
           }
         );
+        await heartbeat(
+          input.jobId,
+          `openclaw.${input.actionType}.completed`,
+          `${route.honeycombAgentId} route ${routeIndex + 1}/${routes.length}`,
+          input.stageId ?? null
+        );
 
         maybeCrashOnce(
           `after-openclaw-${input.actionType}-stage-${input.stageIndex
@@ -301,6 +335,12 @@ async function runOpenClawAgentIdempotent(input: {
           error: lastError
         });
         routeAttempts.push(failedAttempt);
+        await heartbeat(
+          input.jobId,
+          `openclaw.${input.actionType}.route_failed`,
+          lastError,
+          input.stageId ?? null
+        );
         await appendJobEvent(
           input.jobId,
           "tool.openclaw_agent_route_failed",
@@ -332,6 +372,12 @@ async function runOpenClawAgentIdempotent(input: {
       idempotencyKey,
       error: toSafeErrorMessage(error)
     });
+    await heartbeat(
+      input.jobId,
+      `openclaw.${input.actionType}.failed`,
+      toSafeErrorMessage(error),
+      input.stageId ?? null
+    );
     throw new Error(toSafeErrorMessage(error));
   }
 }
@@ -716,6 +762,12 @@ export async function runStageAgent(input: {
     throw new Error(`Job not found: ${input.jobId}`);
   }
 
+  await setJobStatus(input.jobId, input.attemptNo > 1 ? "fixing" : "running", {
+    source: "stage.agent_started",
+    stageId: input.stageId,
+    attemptNo: input.attemptNo
+  });
+
   const routingMode = input.routingMode ?? job.routingMode ?? DEFAULT_ROUTING_MODE;
   const handoffTargetAgentId =
     input.handoffTargetAgentId === undefined ? "test-agent" : input.handoffTargetAgentId;
@@ -985,6 +1037,12 @@ export async function runTestAgent(input: {
     throw new Error(`Job not found: ${input.jobId}`);
   }
 
+  await setJobStatus(input.jobId, "testing", {
+    source: "stage.test_started",
+    stageId: input.stageId,
+    attemptNo: input.attemptNo
+  });
+
   const parsed = outputArtifact.content ? JSON.parse(outputArtifact.content) : {};
   const testAgentId = "test-agent";
   const testAgentSessionId =
@@ -1193,6 +1251,12 @@ export async function runFinalTestAgent(input: {
   if (!job) {
     throw new Error(`Job not found: ${input.jobId}`);
   }
+
+  await setJobStatus(input.jobId, "testing", {
+    source: "final.test_started",
+    sourceArtifactId: input.sourceArtifactId,
+    routingMode: input.routingMode
+  });
 
   const workdir = job.workdir ?? path.resolve(process.env.JOB_DATA_DIR ?? "data/jobs", input.jobId);
   const finalDir = path.join(workdir, "final");
@@ -1620,6 +1684,12 @@ export async function requestStageFix(input: {
   attemptNo: number;
   reportArtifactId: string;
 }) {
+  await setJobStatus(input.jobId, "fixing", {
+    source: "stage.fix_requested",
+    stageId: input.stageId,
+    attemptNo: input.attemptNo,
+    reportArtifactId: input.reportArtifactId
+  });
   await markStageFixing(input.stageId);
   await appendJobEvent(input.jobId, "stage.fix_requested", {
     stageId: input.stageId,
@@ -1665,6 +1735,8 @@ export async function finalizeJob(jobId: string) {
   if (!job) {
     throw new Error(`Job not found: ${jobId}`);
   }
+
+  await heartbeat(jobId, "finalize.started");
 
   const stages = await getStagesForJob(jobId);
   const workdir = job.workdir ?? path.resolve(process.env.JOB_DATA_DIR ?? "data/jobs", jobId);

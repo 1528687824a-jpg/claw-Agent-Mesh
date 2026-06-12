@@ -36,6 +36,7 @@
     "smoke:provider-secret-status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-provider-secret-status.ps1",
     "smoke:runtime-diagnostics-readiness": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-runtime-diagnostics-readiness.ps1",
     "smoke:runtime-repair-actions": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-runtime-repair-actions.ps1",
+    "smoke:job-heartbeats": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-job-heartbeats.ps1",
     "smoke:web-search-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-web-search-browser.ps1",
     "smoke:list-jobs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-list-jobs.ps1",
     "smoke:experience-memory": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-experience-memory.ps1",

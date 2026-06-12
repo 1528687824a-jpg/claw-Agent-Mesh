@@ -1,5 +1,6 @@
 import { listToolApprovals } from "../../../packages/db/src/approvals";
 import { listAgentConfigs, listModelProviders } from "../../../packages/db/src/config-registry";
+import { getJobHeartbeatSummary } from "../../../packages/db/src/jobs";
 import { pool } from "../../../packages/db/src/pool";
 import { listDueScheduledTasks, listScheduledTasks } from "../../../packages/db/src/schedules";
 import { listMcpServers, listSkills } from "../../../packages/db/src/tool-registry";
@@ -178,6 +179,42 @@ export async function getRuntimeDiagnostics(input: {
   });
   for (const action of hostRuntime.docker.nextActions) {
     pushAction(recommendedActions, action);
+  }
+
+  try {
+    const heartbeatTimeoutSeconds = Number(process.env.JOB_HEARTBEAT_TIMEOUT_SECONDS ?? 300);
+    const heartbeats = await getJobHeartbeatSummary({
+      timeoutSeconds: heartbeatTimeoutSeconds,
+      limit: 5
+    });
+    const heartbeatStatus =
+      heartbeats.stalled > 0 || heartbeats.staleCandidates > 0 ? "warning" : "ok";
+    checks.push({
+      id: "job_heartbeats",
+      title: "Job heartbeats",
+      status: heartbeatStatus,
+      summary:
+        heartbeatStatus === "ok"
+          ? `${heartbeats.active} active jobs have fresh or non-expired heartbeats.`
+          : `${heartbeats.staleCandidates} active jobs have expired heartbeats; ${heartbeats.stalled} jobs are marked stalled.`,
+      details: heartbeats
+    });
+    if (heartbeats.staleCandidates > 0) {
+      pushAction(recommendedActions, "Run job heartbeat scan to mark stalled jobs before deciding whether to cancel or retry them.");
+    }
+    if (heartbeats.stalled > 0) {
+      pushAction(recommendedActions, "Review stalled jobs and decide whether to cancel, retry, or wait.");
+    }
+  } catch (error) {
+    checks.push({
+      id: "job_heartbeats",
+      title: "Job heartbeats",
+      status: "unknown",
+      summary: "Job heartbeat diagnostics could not be read.",
+      details: {
+        error: error instanceof Error ? error.message : String(error)
+      }
+    });
   }
 
   const providers = await withLiveProviderSecretStatuses(await listModelProviders());

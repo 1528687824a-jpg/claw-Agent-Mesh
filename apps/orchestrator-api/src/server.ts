@@ -9,8 +9,10 @@ import {
   getJob,
   getJobByFeishuMessageId,
   getJobBySessionId,
+  getJobHeartbeatSummary,
   InvalidJobListCursorError,
   listJobs,
+  scanStalledJobHeartbeats,
   restoreJobSession
 } from "../../../packages/db/src/jobs";
 import {
@@ -212,6 +214,16 @@ const runtimeLogsQuerySchema = z.object({
 const runtimeUsageQuerySchema = z.object({
   since: z.string().datetime({ offset: true }).optional(),
   until: z.string().datetime({ offset: true }).optional()
+});
+
+const jobHeartbeatQuerySchema = z.object({
+  timeoutSeconds: z.coerce.number().int().min(10).max(86400).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional()
+});
+
+const jobHeartbeatScanSchema = z.object({
+  timeoutSeconds: z.number().int().min(10).max(86400).optional(),
+  limit: z.number().int().min(1).max(500).optional()
 });
 
 const runtimeDiagnosticsQuerySchema = z.object({
@@ -1018,6 +1030,24 @@ async function main() {
     try {
       const query = runtimeUsageQuerySchema.parse(request.query);
       response.json(await getRuntimeUsage(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/runtime/heartbeats", async (request, response, next) => {
+    try {
+      const query = jobHeartbeatQuerySchema.parse(request.query);
+      response.json(await getJobHeartbeatSummary(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/runtime/heartbeats/scan", async (request, response, next) => {
+    try {
+      const input = jobHeartbeatScanSchema.parse(request.body ?? {});
+      response.json(await scanStalledJobHeartbeats(input));
     } catch (error) {
       next(error);
     }

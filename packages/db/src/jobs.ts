@@ -5,10 +5,12 @@ import {
   DEFAULT_MAX_MODEL_CALLS,
   DEFAULT_ROUTING_MODE,
   INGRESS_ORIGINS,
+  JOB_HEARTBEAT_STATUSES,
   JOB_STATUSES,
   ROUTING_MODES,
   type CreateJobInput,
   type IngressOrigin,
+  type JobHeartbeatStatus,
   type JobRecord,
   type RoutingMode,
   type JobStatus
@@ -18,6 +20,15 @@ import { appendAgentEvent } from "./session";
 
 type JobListSort = "createdAt" | "updatedAt";
 type JobListOrder = "asc" | "desc";
+
+const ACTIVE_HEARTBEAT_JOB_STATUSES: JobStatus[] = [
+  "created",
+  "queued",
+  "planning",
+  "running",
+  "testing",
+  "fixing"
+];
 
 type JobListCursor = {
   sort: JobListSort;
@@ -55,6 +66,30 @@ function normalizeJobStatus(value: unknown): JobStatus | null {
   return typeof value === "string" && (JOB_STATUSES as readonly string[]).includes(value)
     ? (value as JobStatus)
     : null;
+}
+
+function normalizeJobHeartbeatStatus(value: unknown): JobHeartbeatStatus {
+  return typeof value === "string" && (JOB_HEARTBEAT_STATUSES as readonly string[]).includes(value)
+    ? (value as JobHeartbeatStatus)
+    : "unknown";
+}
+
+function heartbeatStatusForJobStatus(status: JobStatus): JobHeartbeatStatus {
+  if (status === "succeeded" || status === "failed" || status === "cancelled") {
+    return "terminal";
+  }
+  if (status === "waiting_for_human") {
+    return "paused";
+  }
+  return "healthy";
+}
+
+function heartbeatNoteFromPayload(payload: Record<string, unknown>) {
+  const reason = payload.reason;
+  if (typeof reason === "string" && reason.trim()) {
+    return reason.trim().slice(0, 500);
+  }
+  return null;
 }
 
 function normalizeJobListSort(value: unknown): JobListSort {
@@ -119,6 +154,11 @@ function toJobRecord(row: any): JobRecord {
     discussionRounds: row.discussion_rounds ?? DEFAULT_DISCUSSION_ROUNDS,
     status: row.status,
     workflowId: row.workflow_id,
+    heartbeatAt: row.heartbeat_at ? row.heartbeat_at.toISOString() : null,
+    heartbeatStatus: normalizeJobHeartbeatStatus(row.heartbeat_status),
+    heartbeatSource: row.heartbeat_source ?? null,
+    heartbeatNote: row.heartbeat_note ?? null,
+    stalledAt: row.stalled_at ? row.stalled_at.toISOString() : null,
     finalOutput: row.final_output,
     workdir: row.workdir,
     feishuChatId: row.feishu_chat_id,
@@ -153,8 +193,11 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
       max_model_calls,
       classic_final_gate_enabled,
       discussion_rounds,
-      status
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'created')
+      status,
+      heartbeat_at,
+      heartbeat_status,
+      heartbeat_source
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'created', now(), 'healthy', 'job.created')
     returning *`,
     [
       id,
@@ -329,13 +372,23 @@ export async function setJobStatus(
   status: JobStatus,
   payload: Record<string, unknown> = {}
 ) {
+  const heartbeatStatus = heartbeatStatusForJobStatus(status);
   const result = await pool.query(
     `update agent.jobs
-     set status = $2, updated_at = now()
+     set status = $2,
+         heartbeat_at = now(),
+         heartbeat_status = $3,
+         heartbeat_source = $4,
+         heartbeat_note = $5,
+         stalled_at = case
+           when $3 in ('healthy', 'paused', 'terminal') then null
+           else stalled_at
+         end,
+         updated_at = now()
      where id = $1
        and (status <> 'cancelled' or $2 = 'cancelled')
      returning id`,
-    [jobId, status]
+    [jobId, status, heartbeatStatus, `job.${status}`, heartbeatNoteFromPayload(payload)]
   );
 
   if (result.rowCount === 0) {
@@ -349,7 +402,14 @@ export async function setJobStatus(
 export async function setJobWorkflowId(jobId: string, workflowId: string) {
   await pool.query(
     `update agent.jobs
-     set workflow_id = $2, status = 'queued', updated_at = now()
+     set workflow_id = $2,
+         status = 'queued',
+         heartbeat_at = now(),
+         heartbeat_status = 'healthy',
+         heartbeat_source = 'job.workflow_started',
+         heartbeat_note = null,
+         stalled_at = null,
+         updated_at = now()
      where id = $1`,
     [jobId, workflowId]
   );
@@ -360,7 +420,13 @@ export async function setJobWorkflowId(jobId: string, workflowId: string) {
 export async function setJobWorkdir(jobId: string, workdir: string) {
   await pool.query(
     `update agent.jobs
-     set workdir = $2, updated_at = now()
+     set workdir = $2,
+         heartbeat_at = now(),
+         heartbeat_status = 'healthy',
+         heartbeat_source = 'job.workdir_prepared',
+         heartbeat_note = null,
+         stalled_at = null,
+         updated_at = now()
      where id = $1`,
     [jobId, workdir]
   );
@@ -373,6 +439,11 @@ export async function setJobFinalOutput(jobId: string, finalOutput: string) {
     `update agent.jobs
      set final_output = $2,
          status = 'succeeded',
+         heartbeat_at = now(),
+         heartbeat_status = 'terminal',
+         heartbeat_source = 'job.succeeded',
+         heartbeat_note = null,
+         stalled_at = null,
          completed_at = coalesce(completed_at, now()),
          updated_at = now()
      where id = $1
@@ -429,12 +500,17 @@ export async function cancelJob(input: {
   const result = await pool.query(
     `update agent.jobs
      set status = 'cancelled',
+         heartbeat_at = now(),
+         heartbeat_status = 'terminal',
+         heartbeat_source = 'job.cancelled',
+         heartbeat_note = $2,
+         stalled_at = null,
          completed_at = coalesce(completed_at, now()),
          updated_at = now()
      where id = $1
        and status not in ('succeeded', 'failed', 'cancelled')
      returning *`,
-    [input.jobId]
+    [input.jobId, input.reason?.trim().slice(0, 500) || null]
   );
 
   if (!result.rows[0]) {
@@ -579,6 +655,211 @@ export async function restoreJobSession(input: {
     }
   );
   return job;
+}
+
+export type JobHeartbeatEntry = Pick<
+  JobRecord,
+  | "id"
+  | "status"
+  | "workflowId"
+  | "heartbeatAt"
+  | "heartbeatStatus"
+  | "heartbeatSource"
+  | "heartbeatNote"
+  | "stalledAt"
+  | "updatedAt"
+>;
+
+export type JobHeartbeatSummary = {
+  checkedAt: string;
+  timeoutSeconds: number;
+  active: number;
+  staleCandidates: number;
+  stalled: number;
+  paused: number;
+  terminal: number;
+  oldestActiveHeartbeatAt: string | null;
+  recentStalled: JobHeartbeatEntry[];
+};
+
+export type JobHeartbeatScanResult = {
+  checkedAt: string;
+  timeoutSeconds: number;
+  scanned: number;
+  stalledJobs: JobHeartbeatEntry[];
+  summary: JobHeartbeatSummary;
+};
+
+function normalizeHeartbeatTimeoutSeconds(value?: number) {
+  const fallback = Number(process.env.JOB_HEARTBEAT_TIMEOUT_SECONDS ?? 300);
+  const timeoutSeconds = Number.isFinite(value ?? fallback) ? Number(value ?? fallback) : 300;
+  return Math.min(Math.max(Math.trunc(timeoutSeconds), 10), 86400);
+}
+
+function toHeartbeatEntry(row: any): JobHeartbeatEntry {
+  const job = toJobRecord(row);
+  return {
+    id: job.id,
+    status: job.status,
+    workflowId: job.workflowId,
+    heartbeatAt: job.heartbeatAt,
+    heartbeatStatus: job.heartbeatStatus,
+    heartbeatSource: job.heartbeatSource,
+    heartbeatNote: job.heartbeatNote,
+    stalledAt: job.stalledAt,
+    updatedAt: job.updatedAt
+  };
+}
+
+export async function recordJobHeartbeat(input: {
+  jobId: string;
+  source: string;
+  note?: string | null;
+  appendEvent?: boolean;
+  actor?: string;
+  stageId?: string | null;
+}) {
+  const source = input.source.trim().slice(0, 200) || "heartbeat";
+  const note = input.note?.trim().slice(0, 500) || null;
+  const result = await pool.query(
+    `update agent.jobs
+     set heartbeat_at = now(),
+         heartbeat_status = 'healthy',
+         heartbeat_source = $2,
+         heartbeat_note = $3,
+         stalled_at = null
+     where id = $1
+       and status not in ('succeeded', 'failed', 'cancelled', 'waiting_for_human')
+     returning *`,
+    [input.jobId, source, note]
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  if (input.appendEvent) {
+    await appendJobEvent(
+      input.jobId,
+      "job.heartbeat",
+      {
+        source,
+        note
+      },
+      {
+        actor: input.actor ?? "heartbeat",
+        stageId: input.stageId ?? null
+      }
+    );
+  }
+
+  return toJobRecord(result.rows[0]);
+}
+
+export async function getJobHeartbeatSummary(input: {
+  timeoutSeconds?: number;
+  limit?: number;
+} = {}): Promise<JobHeartbeatSummary> {
+  const timeoutSeconds = normalizeHeartbeatTimeoutSeconds(input.timeoutSeconds);
+  const limit = Math.min(Math.max(input.limit ?? 10, 1), 100);
+  const activeStatuses = ACTIVE_HEARTBEAT_JOB_STATUSES;
+
+  const [counts, recentStalled] = await Promise.all([
+    pool.query(
+      `select
+         count(*) filter (where status = any($1::text[]))::int as active,
+         count(*) filter (
+           where status = any($1::text[])
+             and coalesce(heartbeat_at, updated_at, created_at) < now() - ($2::int * interval '1 second')
+         )::int as stale_candidates,
+         count(*) filter (where heartbeat_status = 'stalled')::int as stalled,
+         count(*) filter (where heartbeat_status = 'paused')::int as paused,
+         count(*) filter (where heartbeat_status = 'terminal')::int as terminal,
+         min(coalesce(heartbeat_at, updated_at, created_at)) filter (where status = any($1::text[])) as oldest_active_heartbeat_at
+       from agent.jobs`,
+      [activeStatuses, timeoutSeconds]
+    ),
+    pool.query(
+      `select *
+       from agent.jobs
+       where heartbeat_status = 'stalled'
+       order by stalled_at desc nulls last, updated_at desc
+       limit $1`,
+      [limit]
+    )
+  ]);
+
+  const row = counts.rows[0] ?? {};
+  return {
+    checkedAt: new Date().toISOString(),
+    timeoutSeconds,
+    active: Number(row.active ?? 0),
+    staleCandidates: Number(row.stale_candidates ?? 0),
+    stalled: Number(row.stalled ?? 0),
+    paused: Number(row.paused ?? 0),
+    terminal: Number(row.terminal ?? 0),
+    oldestActiveHeartbeatAt: row.oldest_active_heartbeat_at
+      ? row.oldest_active_heartbeat_at.toISOString()
+      : null,
+    recentStalled: recentStalled.rows.map(toHeartbeatEntry)
+  };
+}
+
+export async function scanStalledJobHeartbeats(input: {
+  timeoutSeconds?: number;
+  limit?: number;
+} = {}): Promise<JobHeartbeatScanResult> {
+  const timeoutSeconds = normalizeHeartbeatTimeoutSeconds(input.timeoutSeconds);
+  const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
+  const note = `No heartbeat for at least ${timeoutSeconds} seconds.`;
+  const result = await pool.query(
+    `with candidates as (
+       select id
+       from agent.jobs
+       where status = any($1::text[])
+         and heartbeat_status <> 'stalled'
+         and coalesce(heartbeat_at, updated_at, created_at) < now() - ($2::int * interval '1 second')
+       order by coalesce(heartbeat_at, updated_at, created_at) asc, created_at asc
+       limit $3
+     )
+     update agent.jobs as jobs
+     set heartbeat_status = 'stalled',
+         heartbeat_source = 'heartbeat.scan',
+         heartbeat_note = $4,
+         stalled_at = coalesce(jobs.stalled_at, now())
+     from candidates
+     where jobs.id = candidates.id
+     returning jobs.*`,
+    [ACTIVE_HEARTBEAT_JOB_STATUSES, timeoutSeconds, limit, note]
+  );
+
+  const stalledJobs = result.rows.map(toHeartbeatEntry);
+  for (const job of stalledJobs) {
+    await appendJobEvent(
+      job.id,
+      "job.heartbeat_stalled",
+      {
+        timeoutSeconds,
+        heartbeatAt: job.heartbeatAt,
+        heartbeatSource: job.heartbeatSource,
+        note
+      },
+      {
+        actor: "heartbeat-monitor"
+      }
+    );
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    timeoutSeconds,
+    scanned: stalledJobs.length,
+    stalledJobs,
+    summary: await getJobHeartbeatSummary({
+      timeoutSeconds,
+      limit: Math.min(limit, 100)
+    })
+  };
 }
 
 export async function appendJobEvent(

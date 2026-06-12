@@ -58,10 +58,12 @@ const capabilities: RuntimeCapability[] = [
     id: "runtime_observability",
     title: "Runtime observability",
     status: "ready",
-    summary: "Runtime logs, token/cost usage summary, session event history, and SSE streaming are available.",
+    summary: "Runtime logs, token/cost usage summary, job heartbeats, session event history, and SSE streaming are available.",
     routes: [
       "GET /runtime/logs",
       "GET /runtime/usage",
+      "GET /runtime/heartbeats",
+      "POST /runtime/heartbeats/scan",
       "GET /sessions/:sessionId/events",
       "GET /sessions/:sessionId/events/stream",
       "GET /runtime/capabilities",
@@ -72,6 +74,9 @@ const capabilities: RuntimeCapability[] = [
       "Token usage summary from real-mode OpenClaw usage payloads",
       "Estimated USD cost from provider metadata pricing",
       "Per-provider/model, per-agent, and per-day usage/cost buckets",
+      "Job heartbeat summary",
+      "Stalled-job heartbeat scan",
+      "Job heartbeat diagnostics",
       "Session event stream",
       "Machine-readable capability inventory",
       "Runtime diagnostics aggregate"

@@ -68,6 +68,8 @@ export type JobStatus =
   | "failed"
   | "cancelled";
 
+export type JobHeartbeatStatus = "unknown" | "healthy" | "stalled" | "paused" | "terminal";
+
 export type RoutingMode =
   | "pipeline"
   | "supervisor_pipeline"
@@ -1108,6 +1110,11 @@ export type JobRecord = {
   finalOutput: string | null;
   workdir: string | null;
   workflowId: string | null;
+  heartbeatAt: string | null;
+  heartbeatStatus: JobHeartbeatStatus;
+  heartbeatSource: string | null;
+  heartbeatNote: string | null;
+  stalledAt: string | null;
   requesterId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1213,6 +1220,39 @@ export type ListRuntimeLogsInput = {
 export type RuntimeUsageInput = {
   since?: string;
   until?: string;
+};
+
+export type JobHeartbeatEntry = Pick<
+  JobRecord,
+  | "id"
+  | "status"
+  | "workflowId"
+  | "heartbeatAt"
+  | "heartbeatStatus"
+  | "heartbeatSource"
+  | "heartbeatNote"
+  | "stalledAt"
+  | "updatedAt"
+>;
+
+export type JobHeartbeatSummary = {
+  checkedAt: string;
+  timeoutSeconds: number;
+  active: number;
+  staleCandidates: number;
+  stalled: number;
+  paused: number;
+  terminal: number;
+  oldestActiveHeartbeatAt: string | null;
+  recentStalled: JobHeartbeatEntry[];
+};
+
+export type JobHeartbeatScanResult = {
+  checkedAt: string;
+  timeoutSeconds: number;
+  scanned: number;
+  stalledJobs: JobHeartbeatEntry[];
+  summary: JobHeartbeatSummary;
 };
 
 export type ListSessionsInput = {
@@ -1323,6 +1363,25 @@ export async function getRuntimeUsage(input: RuntimeUsageInput = {}) {
   const params = new URLSearchParams();
   appendSearchParams(params, input);
   return request<RuntimeUsageResponse>(`/runtime/usage?${params.toString()}`);
+}
+
+export async function getJobHeartbeatSummary(input: {
+  timeoutSeconds?: number;
+  limit?: number;
+} = {}) {
+  const params = new URLSearchParams();
+  appendSearchParams(params, input);
+  return request<JobHeartbeatSummary>(`/runtime/heartbeats?${params.toString()}`);
+}
+
+export async function scanStalledJobHeartbeats(input: {
+  timeoutSeconds?: number;
+  limit?: number;
+} = {}) {
+  return request<JobHeartbeatScanResult>("/runtime/heartbeats/scan", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
 }
 
 export async function getRuntimeCapabilities() {

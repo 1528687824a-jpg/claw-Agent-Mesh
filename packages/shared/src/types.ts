@@ -23,6 +23,16 @@ export const JOB_STATUSES = [
   "cancelled"
 ] as const;
 
+export const JOB_HEARTBEAT_STATUSES = [
+  "unknown",
+  "healthy",
+  "stalled",
+  "paused",
+  "terminal"
+] as const;
+
+export type JobHeartbeatStatus = (typeof JOB_HEARTBEAT_STATUSES)[number];
+
 export const ROUTING_MODES = [
   "pipeline",
   "supervisor_pipeline",
@@ -51,6 +61,11 @@ export type JobRecord = {
   discussionRounds: number;
   status: JobStatus;
   workflowId: string | null;
+  heartbeatAt: string | null;
+  heartbeatStatus: JobHeartbeatStatus;
+  heartbeatSource: string | null;
+  heartbeatNote: string | null;
+  stalledAt: string | null;
   finalOutput: string | null;
   workdir: string | null;
   feishuChatId: string | null;
