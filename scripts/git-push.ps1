@@ -1,11 +1,11 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [int]$Attempts = 4,
   [int]$DelaySeconds = 15,
   [string]$Remote = "origin",
   [string]$Branch = ""
 )
+
+$ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
