@@ -148,7 +148,10 @@ import {
   readProviderApiKey,
   saveProviderApiKey
 } from "../../../packages/runtime/src/local-secrets";
-import { verifyOpenAiCompatibleProvider } from "./provider-verification";
+import {
+  verifyOpenAiCompatibleProvider,
+  type ProviderVerificationResult
+} from "./provider-verification";
 import { checkMcpCommand } from "./mcp-diagnostics";
 import { requireApiToken, timingSafeEqualString } from "./api-auth";
 import {
@@ -231,6 +234,16 @@ const patchProviderSchema = providerSchema.partial().extend({
 const verifyProviderSchema = z.object({
   apiKey: z.string().min(1).max(10000).optional(),
   model: z.string().trim().min(1).max(300).optional()
+});
+
+const verifyProvidersBatchSchema = z.object({
+  providerIds: z.array(z.string().trim().min(1).max(160)).max(50).optional(),
+  providers: z.array(z.object({
+    providerId: z.string().trim().min(1).max(160),
+    apiKey: z.string().min(1).max(10000).optional(),
+    model: z.string().trim().min(1).max(300).optional()
+  })).max(50).optional(),
+  timeoutMs: z.number().int().min(500).max(60000).optional()
 });
 
 const agentConfigSchema = z.object({
@@ -663,6 +676,42 @@ function stableIdFromName(prefix: string, value: string) {
   return `${prefix}-${slug || "default"}`;
 }
 
+function withProviderVerificationMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  verification: ProviderVerificationResult,
+  model: string | null
+) {
+  return {
+    ...(metadata ?? {}),
+    verification: {
+      checkedAt: verification.checkedAt,
+      status: verification.status,
+      ok: verification.ok,
+      statusCode: verification.statusCode,
+      latencyMs: verification.latencyMs,
+      model,
+      message: verification.message
+    }
+  };
+}
+
+function providerVerificationFailure(message: string): ProviderVerificationResult {
+  return {
+    ok: false,
+    status: "failed",
+    checkedAt: new Date().toISOString(),
+    latencyMs: 0,
+    statusCode: null,
+    message
+  };
+}
+
+type ProviderVerificationRequest = {
+  providerId: string;
+  apiKey?: string;
+  model?: string;
+};
+
 const listJobsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
   status: z.enum(JOB_STATUSES).optional(),
@@ -998,6 +1047,7 @@ async function main() {
       let verificationStatus: "unknown" | "succeeded" | "failed" = "unknown";
       let lastVerifiedAt: string | null = null;
       let lastError: string | null = null;
+      let metadata = input.metadata ?? {};
 
       if (input.verify) {
         const apiKey = input.apiKey ?? await readProviderApiKey(providerId);
@@ -1014,6 +1064,7 @@ async function main() {
         verificationStatus = verification.status;
         lastVerifiedAt = verification.checkedAt;
         lastError = verification.message;
+        metadata = withProviderVerificationMetadata(metadata, verification, model);
       }
 
       const provider = await upsertModelProvider({
@@ -1026,7 +1077,7 @@ async function main() {
         verificationStatus,
         lastVerifiedAt,
         lastError,
-        metadata: input.metadata
+        metadata
       });
       response.status(201).json(provider);
     } catch (error) {
@@ -1063,6 +1114,75 @@ async function main() {
     }
   });
 
+  app.post("/providers/verify-batch", async (request, response, next) => {
+    try {
+      const input = verifyProvidersBatchSchema.parse(request.body ?? {});
+      const requestedProviders: ProviderVerificationRequest[] =
+        input.providers ??
+        input.providerIds?.map((providerId): ProviderVerificationRequest => ({ providerId })) ??
+        (await listModelProviders()).map((provider): ProviderVerificationRequest => ({
+          providerId: provider.id
+        }));
+
+      const results = await Promise.all(
+        requestedProviders.map(async (requestedProvider) => {
+          const provider = await getModelProvider(requestedProvider.providerId);
+          if (!provider) {
+            return {
+              providerId: requestedProvider.providerId,
+              provider: null,
+              model: requestedProvider.model ?? null,
+              verification: providerVerificationFailure("provider_not_found")
+            };
+          }
+
+          if (requestedProvider.apiKey) {
+            await saveProviderApiKey(provider.id, requestedProvider.apiKey);
+          }
+
+          const apiKey = requestedProvider.apiKey ?? await readProviderApiKey(provider.id);
+          const model = requestedProvider.model ?? provider.defaultModel;
+          const verification =
+            apiKey && model
+              ? await verifyOpenAiCompatibleProvider({
+                baseUrl: provider.baseUrl,
+                model,
+                apiKey,
+                timeoutMs: input.timeoutMs
+              })
+              : providerVerificationFailure("provider_api_key_and_model_required_for_verify");
+          const patched = await patchModelProvider(provider.id, {
+            apiKeyConfigured: Boolean(apiKey) || provider.apiKeyConfigured,
+            apiKeyFingerprint: apiKey
+              ? fingerprintSecret(apiKey)
+              : provider.apiKeyFingerprint,
+            verificationStatus: verification.status,
+            lastVerifiedAt: verification.checkedAt,
+            lastError: verification.message,
+            metadata: withProviderVerificationMetadata(provider.metadata, verification, model ?? null)
+          });
+
+          return {
+            providerId: provider.id,
+            provider: patched,
+            model: model ?? null,
+            verification
+          };
+        })
+      );
+
+      response.json({
+        checkedAt: new Date().toISOString(),
+        count: results.length,
+        succeeded: results.filter((result) => result.verification.ok).length,
+        failed: results.filter((result) => !result.verification.ok).length,
+        results
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/providers/:providerId/verify", async (request, response, next) => {
     try {
       const provider = await getModelProvider(request.params.providerId);
@@ -1092,7 +1212,8 @@ async function main() {
         apiKeyFingerprint: fingerprintSecret(apiKey),
         verificationStatus: verification.status,
         lastVerifiedAt: verification.checkedAt,
-        lastError: verification.message
+        lastError: verification.message,
+        metadata: withProviderVerificationMetadata(provider.metadata, verification, model)
       });
       response.json({
         provider: patched,

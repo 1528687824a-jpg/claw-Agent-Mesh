@@ -2,6 +2,7 @@ export type ProviderVerificationResult = {
   ok: boolean;
   status: "succeeded" | "failed";
   checkedAt: string;
+  latencyMs: number;
   statusCode: number | null;
   message: string | null;
 };
@@ -20,6 +21,7 @@ export async function verifyOpenAiCompatibleProvider(input: {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? 20_000);
   const checkedAt = new Date().toISOString();
+  const startedAt = Date.now();
   try {
     const response = await fetch(chatCompletionsUrl(input.baseUrl), {
       method: "POST",
@@ -62,6 +64,7 @@ export async function verifyOpenAiCompatibleProvider(input: {
         ok: false,
         status: "failed",
         checkedAt,
+        latencyMs: Date.now() - startedAt,
         statusCode: response.status,
         message
       };
@@ -71,6 +74,7 @@ export async function verifyOpenAiCompatibleProvider(input: {
       ok: true,
       status: "succeeded",
       checkedAt,
+      latencyMs: Date.now() - startedAt,
       statusCode: response.status,
       message: null
     };
@@ -79,6 +83,7 @@ export async function verifyOpenAiCompatibleProvider(input: {
       ok: false,
       status: "failed",
       checkedAt,
+      latencyMs: Date.now() - startedAt,
       statusCode: null,
       message: error instanceof Error ? error.message.slice(0, 500) : "provider_verification_failed"
     };

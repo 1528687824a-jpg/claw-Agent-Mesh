@@ -263,11 +263,12 @@ const capabilities: RuntimeCapability[] = [
     id: "provider_registry",
     title: "Model/provider configuration center",
     status: "partial",
-    summary: "Backend provider registry, local-only key status, OpenAI-compatible verification, shared Docker secret volume, and worker provider routing are available.",
+    summary: "Backend provider registry, local-only key status, OpenAI-compatible verification with latency metadata, shared Docker secret volume, and worker provider routing/failover are available.",
     routes: [
       "GET /providers",
       "POST /providers",
       "PATCH /providers/:providerId",
+      "POST /providers/verify-batch",
       "POST /providers/:providerId/verify"
     ],
     implemented: [
@@ -277,8 +278,10 @@ const capabilities: RuntimeCapability[] = [
       "Local-only provider key storage boundary",
       "Redacted key configured/fingerprint status",
       "OpenAI-compatible provider verification endpoint",
+      "Batch provider verification endpoint with latency recorded in provider metadata",
       "API and worker share provider secrets through a Docker secret volume",
       "Worker passes provider base URL, model, and API key to real OpenClaw CLI calls as runtime env",
+      "Worker can try fallback provider/model routes from agent/provider metadata before failing a model call",
       "OpenClaw agent-model config is generated without writing plaintext API keys"
     ],
     missing: [

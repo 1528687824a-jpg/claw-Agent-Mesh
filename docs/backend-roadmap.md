@@ -184,8 +184,16 @@ changes land.
    - Backend provider registry now exists through `/providers`.
    - API keys are saved through a local-only secret boundary; responses only
      expose configured/fingerprint status.
+   - `/providers/verify-batch` verifies multiple OpenAI-compatible providers
+     at once, records latency/status in `provider.metadata.verification`, and
+     keeps pricing metadata intact.
    - Worker routing consumes provider base URL, model, and API key from this
      registry.
+   - Worker route resolution supports fallback provider/model candidates from
+     `agent.metadata.fallbackRoutes` / `fallbackProviderIds` and primary
+     `provider.metadata` fallback declarations. Failed primary attempts are
+     recorded in model-call routeAttempts before the worker tries the next
+     route.
    - Native generated OpenClaw provider config now writes redacted model/provider
      records for each agent; plaintext keys still stay in the local secret
      boundary.

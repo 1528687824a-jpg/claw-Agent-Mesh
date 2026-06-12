@@ -60,3 +60,9 @@
 - P0 runtime cost observability is now implemented beyond token totals: provider metadata can define USD pricing, optional model overrides are supported, and `GET /runtime/usage` returns estimated cost totals by summary, provider/model, agent, and day.
 - Verification added: `tests/pricing-policy.test.ts` covers pricing parsing and model overrides; `npm run smoke:runtime-usage-cost` inserts a real model-call usage payload and verifies the API cost aggregation.
 - Remaining P0 backend work after this slice: primary/fallback provider failover, batch latency verification, packaged OpenClaw launch/restart defaults, real provider E2E, and Phase 18 web search/browser gateway.
+
+## 2026-06-12 Update 2
+
+- P0 provider resilience slice is now implemented: `POST /providers/verify-batch` verifies multiple OpenAI-compatible providers, records latency in provider metadata, and returns per-provider results for future UI ranking.
+- Worker model calls now resolve route candidates from the primary agent provider plus `agent.metadata.fallbackRoutes` / `fallbackProviderIds` and primary provider metadata fallbacks. If the primary route fails, the worker records a failed route attempt and tries the next provider/model before marking the model call failed.
+- Remaining P0 backend work after this slice: packaged OpenClaw launch/restart defaults, real provider E2E against installed OpenClaw, and Phase 18 web search/browser gateway.

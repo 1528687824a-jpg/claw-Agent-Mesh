@@ -51,7 +51,12 @@ import {
   DEFAULT_MAX_MODEL_CALLS,
   DEFAULT_ROUTING_MODE
 } from "../../../packages/shared/src/types";
-import { redactAgentRuntime, resolveAgentRuntime } from "./agent-runtime";
+import {
+  redactAgentRuntime,
+  resolveAgentRuntimeCandidates,
+  type AgentRuntimeRoute,
+  type AgentRuntimeSecrets
+} from "./agent-runtime";
 import { runOpenClawAgent, type OpenClawRunResult } from "./adapters/openclaw";
 import { loadClusterConfig } from "./config/cluster";
 import { deliverOutboundMessage } from "./egress/dispatcher";
@@ -77,6 +82,40 @@ function sha256(input: string) {
 
 function toSafeErrorMessage(error: unknown) {
   return (error instanceof Error ? error.message : String(error)).replace(/\u0000/g, "");
+}
+
+function isOpenClawRealMode() {
+  return process.env.OPENCLAW_AGENT_MODE === "real";
+}
+
+function routeReadinessError(route: AgentRuntimeSecrets) {
+  if (!isOpenClawRealMode() || !route.providerId) {
+    return null;
+  }
+  if (!route.providerBaseUrl) {
+    return "provider_base_url_missing";
+  }
+  if (!route.model) {
+    return "model_not_configured";
+  }
+  if (!route.apiKey) {
+    return "provider_api_key_missing";
+  }
+  return null;
+}
+
+function routeAttemptPayload(input: {
+  route: AgentRuntimeRoute;
+  ok: boolean;
+  latencyMs: number;
+  error?: string | null;
+}) {
+  return {
+    route: input.route,
+    ok: input.ok,
+    latencyMs: input.latencyMs,
+    error: input.error ?? null
+  };
 }
 
 function getModelCallResult(payload: Record<string, unknown> | null): OpenClawRunResult | null {
@@ -105,8 +144,10 @@ async function runOpenClawAgentIdempotent(input: {
     input.actionType
   ].join(":");
   const existing = await getModelCallByKey(idempotencyKey);
-  const route = await resolveAgentRuntime({ requestedAgentId: input.agentId });
-  const redactedRoute = redactAgentRuntime(route);
+  const routes = await resolveAgentRuntimeCandidates({ requestedAgentId: input.agentId });
+  const primaryRoute = routes[0];
+  const redactedPrimaryRoute = redactAgentRuntime(primaryRoute);
+  const redactedRouteCandidates = routes.map(redactAgentRuntime);
 
   if (existing?.status === "succeeded") {
     await appendJobEvent(
@@ -114,14 +155,15 @@ async function runOpenClawAgentIdempotent(input: {
       "tool.openclaw_agent_reused",
       {
         stageId: input.stageId,
-        agentId: route.honeycombAgentId,
+        agentId: primaryRoute.honeycombAgentId,
         requestedAgentId: input.agentId,
-        openclawAgentId: route.openclawAgentId,
+        openclawAgentId: primaryRoute.openclawAgentId,
         attemptNo: input.attemptNo,
         actionType: input.actionType,
         modelCallId: existing.id,
         idempotencyKey,
-        route: redactedRoute
+        route: redactedPrimaryRoute,
+        routeCandidates: redactedRouteCandidates
       },
       {
         actor: "tool-gateway",
@@ -143,7 +185,7 @@ async function runOpenClawAgentIdempotent(input: {
     stageId: input.stageId,
     attemptNo: input.attemptNo,
     actionType: input.actionType,
-    agentId: route.honeycombAgentId,
+    agentId: primaryRoute.honeycombAgentId,
     agentSessionId: input.sessionId,
     requestHash: sha256(input.message)
   });
@@ -153,14 +195,15 @@ async function runOpenClawAgentIdempotent(input: {
     "tool.openclaw_agent_requested",
     {
       stageId: input.stageId,
-      agentId: route.honeycombAgentId,
+      agentId: primaryRoute.honeycombAgentId,
       requestedAgentId: input.agentId,
-      openclawAgentId: route.openclawAgentId,
+      openclawAgentId: primaryRoute.openclawAgentId,
       attemptNo: input.attemptNo,
       actionType: input.actionType,
       idempotencyKey,
-      mode: process.env.OPENCLAW_AGENT_MODE === "real" ? "real" : "mock",
-      route: redactedRoute
+      mode: isOpenClawRealMode() ? "real" : "mock",
+      route: redactedPrimaryRoute,
+      routeCandidates: redactedRouteCandidates
     },
     {
       actor: "tool-gateway",
@@ -168,57 +211,122 @@ async function runOpenClawAgentIdempotent(input: {
     }
   );
 
+  const routeAttempts: ReturnType<typeof routeAttemptPayload>[] = [];
+  let lastError: string | null = null;
   try {
-    const result = await runOpenClawAgent({
-      agentId: route.openclawAgentId,
-      sessionId: input.sessionId,
-      message: input.message,
-      provider: {
-        providerId: route.providerId,
-        baseUrl: route.providerBaseUrl,
-        model: route.model,
-        apiKey: route.apiKey
-      },
-      timeoutSeconds: input.timeoutSeconds
-    });
+    for (let routeIndex = 0; routeIndex < routes.length; routeIndex++) {
+      const route = routes[routeIndex];
+      const redactedRoute = redactAgentRuntime(route);
+      const startedAt = Date.now();
+      try {
+        const readinessError = routeReadinessError(route);
+        if (readinessError) {
+          throw new Error(readinessError);
+        }
 
-    await markModelCallSucceeded({
-      idempotencyKey,
-      responsePayload: {
-        result,
-        route: redactedRoute
+        const result = await runOpenClawAgent({
+          agentId: route.openclawAgentId,
+          sessionId: input.sessionId,
+          message: input.message,
+          provider: {
+            providerId: route.providerId,
+            baseUrl: route.providerBaseUrl,
+            model: route.model,
+            apiKey: route.apiKey
+          },
+          timeoutSeconds: input.timeoutSeconds
+        });
+        const successAttempt = routeAttemptPayload({
+          route: redactedRoute,
+          ok: true,
+          latencyMs: Date.now() - startedAt
+        });
+        routeAttempts.push(successAttempt);
+
+        await markModelCallSucceeded({
+          idempotencyKey,
+          responsePayload: {
+            result,
+            route: redactedRoute,
+            routeAttempts,
+            routeSelection: {
+              selectedIndex: routeIndex,
+              attemptedCount: routeAttempts.length,
+              failoverUsed: routeIndex > 0
+            }
+          }
+        });
+
+        await appendJobEvent(
+          input.jobId,
+          "tool.openclaw_agent_completed",
+          {
+            stageId: input.stageId,
+            agentId: route.honeycombAgentId,
+            requestedAgentId: input.agentId,
+            openclawAgentId: route.openclawAgentId,
+            attemptNo: input.attemptNo,
+            actionType: input.actionType,
+            idempotencyKey,
+            mode: result?.mode ?? null,
+            sessionId: result?.sessionId ?? input.sessionId,
+            route: redactedRoute,
+            routeAttempts,
+            routeSelection: {
+              selectedIndex: routeIndex,
+              attemptedCount: routeAttempts.length,
+              failoverUsed: routeIndex > 0
+            }
+          },
+          {
+            actor: "tool-gateway",
+            stageId: input.stageId ?? null
+          }
+        );
+
+        maybeCrashOnce(
+          `after-openclaw-${input.actionType}-stage-${input.stageIndex
+            .toString()
+            .padStart(3, "0")}-attempt-${input.attemptNo.toString().padStart(2, "0")}`,
+          input.jobId
+        );
+
+        return result;
+      } catch (error) {
+        lastError = toSafeErrorMessage(error);
+        const failedAttempt = routeAttemptPayload({
+          route: redactedRoute,
+          ok: false,
+          latencyMs: Date.now() - startedAt,
+          error: lastError
+        });
+        routeAttempts.push(failedAttempt);
+        await appendJobEvent(
+          input.jobId,
+          "tool.openclaw_agent_route_failed",
+          {
+            stageId: input.stageId,
+            agentId: route.honeycombAgentId,
+            requestedAgentId: input.agentId,
+            openclawAgentId: route.openclawAgentId,
+            attemptNo: input.attemptNo,
+            actionType: input.actionType,
+            idempotencyKey,
+            routeIndex,
+            route: redactedRoute,
+            error: lastError
+          },
+          {
+            actor: "tool-gateway",
+            stageId: input.stageId ?? null
+          }
+        );
       }
-    });
+    }
 
-    await appendJobEvent(
-      input.jobId,
-      "tool.openclaw_agent_completed",
-      {
-        stageId: input.stageId,
-        agentId: route.honeycombAgentId,
-        requestedAgentId: input.agentId,
-        openclawAgentId: route.openclawAgentId,
-        attemptNo: input.attemptNo,
-        actionType: input.actionType,
-        idempotencyKey,
-        mode: result?.mode ?? null,
-        sessionId: result?.sessionId ?? input.sessionId,
-        route: redactedRoute
-      },
-      {
-        actor: "tool-gateway",
-        stageId: input.stageId ?? null
-      }
+    throw new Error(
+      `All OpenClaw route attempts failed for ${idempotencyKey}: ${lastError ?? "unknown_error"}`
     );
-
-    maybeCrashOnce(
-      `after-openclaw-${input.actionType}-stage-${input.stageIndex
-        .toString()
-        .padStart(3, "0")}-attempt-${input.attemptNo.toString().padStart(2, "0")}`,
-      input.jobId
-    );
-
-    return result;
   } catch (error) {
     await markModelCallFailed({
       idempotencyKey,

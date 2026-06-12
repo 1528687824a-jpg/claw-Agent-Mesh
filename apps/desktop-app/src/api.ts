@@ -491,9 +491,21 @@ export type ProviderVerificationResponse = {
     ok: boolean;
     status: "succeeded" | "failed";
     checkedAt: string;
+    latencyMs: number;
     statusCode: number | null;
     message: string | null;
   };
+};
+
+export type ProviderBatchVerificationResponse = {
+  checkedAt: string;
+  count: number;
+  succeeded: number;
+  failed: number;
+  results: Array<ProviderVerificationResponse & {
+    providerId: string;
+    model: string | null;
+  }>;
 };
 
 export type AgentSyncStatus = "pending" | "synced" | "failed" | "unknown";
@@ -1345,6 +1357,17 @@ export async function verifyModelProvider(
       body: JSON.stringify(input)
     }
   );
+}
+
+export async function verifyModelProvidersBatch(input: {
+  providerIds?: string[];
+  providers?: Array<{ providerId: string; apiKey?: string; model?: string }>;
+  timeoutMs?: number;
+} = {}) {
+  return request<ProviderBatchVerificationResponse>("/providers/verify-batch", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
 }
 
 export async function listAgentConfigs() {
