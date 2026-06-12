@@ -473,7 +473,7 @@ const capabilities: RuntimeCapability[] = [
     id: "installer_diagnostics",
     title: "Installer and runtime diagnostics",
     status: "partial",
-    summary: "Launcher, package checks, runtime diagnostics aggregate, real-provider E2E readiness diagnostics, database/MCP repair actions, OpenClaw/provider repair actions, and desktop repair UI exist; WSL/Docker repair coverage and installer validation are still incomplete.",
+    summary: "Launcher, package checks, runtime diagnostics aggregate, read-only WSL/Docker host checks, real-provider E2E readiness diagnostics, database/MCP repair actions, OpenClaw/provider repair actions, and desktop repair UI exist; safe WSL/Docker repair actions and installer validation are still incomplete.",
     routes: [
       "GET /runtime/diagnostics",
       "GET /runtime/repair/actions",
@@ -485,6 +485,8 @@ const capabilities: RuntimeCapability[] = [
       "No-secret scan",
       "Windows local Tauri shell smoke",
       "Runtime diagnostics aggregate for database, capabilities, OpenClaw, providers, agents, approvals, Skills/MCP, and schedules",
+      "Read-only WSL and Docker host checks with cached probes: wsl.exe availability, configured distro presence/state, Docker CLI/daemon reachability, and Honeycomb container status",
+      "Real-provider E2E readiness includes configured WSL distro availability on the Windows host",
       "Runtime diagnostics reconcile provider secret state and report real-provider E2E readiness without counting local/fake providers as live external providers",
       "Repair action catalog and execution API",
       "Repair actions for idempotent database migrations and MCP command re-checks",
@@ -492,11 +494,11 @@ const capabilities: RuntimeCapability[] = [
       "Desktop supervisor workbench repair card for listing and running backend repair actions"
     ],
     missing: [
-      "Targeted repair actions for WSL/Docker failures",
+      "Safe repair actions for WSL/Docker failures",
       "Cross-platform installer validation"
     ],
     nextActions: [
-      "Add safe WSL/Docker diagnostics and repair actions without mutating user runtimes unexpectedly"
+      "Design safe WSL/Docker repair actions on top of the read-only host checks without mutating user runtimes unexpectedly"
     ]
   }
 ];

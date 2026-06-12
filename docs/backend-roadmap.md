@@ -408,7 +408,14 @@ changes land.
       reconciliation, OpenClaw runtime control, default agent seeding, and
       OpenClaw sync apply. Database migration and MCP command re-check repair
       actions also exist. Desktop workbench can list and execute repair
-      actions; deeper safe WSL/Docker repairs still need implementation.
+      actions. Read-only WSL/Docker host checks now run inside
+      `GET /runtime/diagnostics` with short-TTL probe caching: wsl.exe
+      availability, configured distro presence/state (UTF-16 output handled),
+      Docker CLI/daemon reachability, and Honeycomb container status; the
+      checks skip themselves inside containers or on non-Windows hosts, and
+      real-provider E2E readiness now requires the configured WSL distro.
+      Safe WSL/Docker repair actions (mutating) are still deliberately not
+      implemented until a safer installer strategy is designed.
 
 ## Current Next Step
 

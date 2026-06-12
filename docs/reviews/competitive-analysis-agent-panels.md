@@ -118,3 +118,10 @@
 - The database migration module now exports `runMigrations()` while preserving command-line behavior for `npm run db:migrate`.
 - Verification expanded in `npm run smoke:runtime-repair-actions`: it now expects seven repair actions, runs database migration repair, creates a temporary missing MCP server command, and verifies `mcp.checkAll` marks it missing.
 - Remaining repair work: safe WSL/Docker checks and repair actions, plus cross-platform installer validation.
+
+## 2026-06-12 Update 11
+
+- Read-only WSL/Docker host diagnostics are now part of `GET /runtime/diagnostics`: wsl.exe availability, configured distro presence/state (UTF-16LE output decoded), Docker CLI/daemon reachability, and Honeycomb container status, with a 30s probe cache so panel polling does not spawn host processes per request. Checks skip themselves inside containers or on non-Windows hosts.
+- Real-provider E2E readiness now also requires the configured WSL distro to exist on the Windows host.
+- Verification added: `tests/host-runtime-diagnostics.test.ts` covers UTF-16/UTF-8 output decoding, `wsl -l -v` parsing, and `docker ps` JSON-line parsing; live probes verified on the dev host (Ubuntu-24.04 Running, Docker daemon reachable).
+- Mutating WSL/Docker repair actions remain deliberately deferred until a safer installer strategy is designed; remaining repair work is unchanged otherwise.

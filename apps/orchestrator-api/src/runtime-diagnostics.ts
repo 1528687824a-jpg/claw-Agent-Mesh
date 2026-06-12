@@ -4,6 +4,7 @@ import { pool } from "../../../packages/db/src/pool";
 import { listDueScheduledTasks, listScheduledTasks } from "../../../packages/db/src/schedules";
 import { listMcpServers, listSkills } from "../../../packages/db/src/tool-registry";
 import { getRuntimeCapabilities } from "./capabilities";
+import { getHostRuntimeDiagnostics } from "./host-runtime-diagnostics";
 import { listMcpSessionStats } from "./mcp-sessions";
 import { discoverOpenClawRuntime } from "./openclaw-runtime";
 import {
@@ -141,6 +142,44 @@ export async function getRuntimeDiagnostics(input: {
     pushAction(recommendedActions, action);
   }
 
+  const hostRuntime = await getHostRuntimeDiagnostics();
+  checks.push({
+    id: "wsl_runtime",
+    title: "WSL runtime",
+    status: hostRuntime.wsl.status,
+    summary: hostRuntime.wsl.summary,
+    details: {
+      applicable: hostRuntime.wsl.applicable,
+      wslAvailable: hostRuntime.wsl.wslAvailable,
+      configuredDistro: hostRuntime.wsl.configuredDistro,
+      distroFound: hostRuntime.wsl.distroFound,
+      distroState: hostRuntime.wsl.distroState,
+      distros: hostRuntime.wsl.distros,
+      error: hostRuntime.wsl.error
+    }
+  });
+  for (const action of hostRuntime.wsl.nextActions) {
+    pushAction(recommendedActions, action);
+  }
+
+  checks.push({
+    id: "docker_runtime",
+    title: "Docker runtime",
+    status: hostRuntime.docker.status,
+    summary: hostRuntime.docker.summary,
+    details: {
+      applicable: hostRuntime.docker.applicable,
+      dockerCliAvailable: hostRuntime.docker.dockerCliAvailable,
+      daemonReachable: hostRuntime.docker.daemonReachable,
+      serverVersion: hostRuntime.docker.serverVersion,
+      honeycombContainers: hostRuntime.docker.honeycombContainers,
+      error: hostRuntime.docker.error
+    }
+  });
+  for (const action of hostRuntime.docker.nextActions) {
+    pushAction(recommendedActions, action);
+  }
+
   const providers = await withLiveProviderSecretStatuses(await listModelProviders());
   const verifiedProviders = providers.filter(
     (provider) => provider.verificationStatus === "succeeded"
@@ -218,8 +257,10 @@ export async function getRuntimeDiagnostics(input: {
     pushAction(recommendedActions, "Run OpenClaw sync after provider and agent configuration changes.");
   }
 
+  const wslReadyForRealMode = !hostRuntime.wsl.applicable || hostRuntime.wsl.distroFound;
   const realProviderE2EReady =
     openClaw.selected?.status === "ready" &&
+    wslReadyForRealMode &&
     verifiedLiveProviders.length > 0 &&
     configuredProviders.length > 0 &&
     requiredAgents.length > 0 &&
@@ -234,6 +275,7 @@ export async function getRuntimeDiagnostics(input: {
       : "Real OpenClaw provider E2E is not ready yet.",
     details: {
       openclawReady: openClaw.selected?.status === "ready",
+      wslReadyForRealMode,
       verifiedLiveProviders: verifiedLiveProviders.map((provider) => ({
         id: provider.id,
         displayName: provider.displayName,
@@ -250,6 +292,9 @@ export async function getRuntimeDiagnostics(input: {
   if (!realProviderE2EReady) {
     if (openClaw.selected?.status !== "ready") {
       pushAction(recommendedActions, "Repair or select a ready OpenClaw runtime before real provider E2E.");
+    }
+    if (!wslReadyForRealMode) {
+      pushAction(recommendedActions, "Install the configured WSL distro before running real OpenClaw E2E.");
     }
     if (verifiedLiveProviders.length === 0) {
       pushAction(recommendedActions, "Verify a live external provider with a local API key before running real OpenClaw E2E.");
