@@ -6,6 +6,10 @@ import { listMcpServers, listSkills } from "../../../packages/db/src/tool-regist
 import { getRuntimeCapabilities } from "./capabilities";
 import { listMcpSessionStats } from "./mcp-sessions";
 import { discoverOpenClawRuntime } from "./openclaw-runtime";
+import {
+  PROVIDER_SECRET_MISSING_ERROR,
+  withLiveProviderSecretStatuses
+} from "./provider-secret-status";
 
 export type RuntimeDiagnosticStatus = "ok" | "warning" | "error" | "unknown";
 
@@ -40,6 +44,30 @@ function summarizeStatus(checks: RuntimeDiagnosticCheck[]): RuntimeDiagnosticSta
 function pushAction(actions: string[], action: string) {
   if (!actions.includes(action)) {
     actions.push(action);
+  }
+}
+
+function isLikelyRealProviderBaseUrl(baseUrl: string) {
+  try {
+    const parsed = new URL(baseUrl);
+    const hostname = parsed.hostname.toLowerCase();
+    if (parsed.protocol !== "https:") {
+      return false;
+    }
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".invalid") ||
+      hostname === "example.invalid" ||
+      hostname === "api.example.invalid"
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -113,24 +141,40 @@ export async function getRuntimeDiagnostics(input: {
     pushAction(recommendedActions, action);
   }
 
-  const providers = await listModelProviders();
+  const providers = await withLiveProviderSecretStatuses(await listModelProviders());
   const verifiedProviders = providers.filter(
     (provider) => provider.verificationStatus === "succeeded"
   );
   const failedProviders = providers.filter((provider) => provider.verificationStatus === "failed");
   const configuredProviders = providers.filter((provider) => provider.apiKeyConfigured);
+  const verifiedLiveProviders = verifiedProviders.filter(
+    (provider) => provider.apiKeyConfigured && isLikelyRealProviderBaseUrl(provider.baseUrl)
+  );
+  const missingSecretProviders = providers.filter((provider) => provider.lastError === PROVIDER_SECRET_MISSING_ERROR);
   checks.push({
     id: "providers",
     title: "Model providers",
-    status: providers.length === 0 || failedProviders.length > 0 ? "warning" : "ok",
+    status:
+      providers.length === 0 ||
+        configuredProviders.length === 0 ||
+        verifiedProviders.length === 0 ||
+        failedProviders.length > 0 ||
+        missingSecretProviders.length > 0
+        ? "warning"
+        : "ok",
     summary:
       providers.length === 0
         ? "No model provider has been configured."
-        : `${configuredProviders.length}/${providers.length} providers have local API keys configured.`,
+        : `${configuredProviders.length}/${providers.length} providers have live local API keys configured.`,
     details: {
       total: providers.length,
       configured: configuredProviders.length,
       verified: verifiedProviders.length,
+      verifiedLive: verifiedLiveProviders.length,
+      missingSecrets: missingSecretProviders.map((provider) => ({
+        id: provider.id,
+        displayName: provider.displayName
+      })),
       failed: failedProviders.map((provider) => ({
         id: provider.id,
         displayName: provider.displayName,
@@ -140,6 +184,15 @@ export async function getRuntimeDiagnostics(input: {
   });
   if (providers.length === 0) {
     pushAction(recommendedActions, "Configure and verify at least one model provider.");
+  }
+  if (providers.length > 0 && configuredProviders.length === 0) {
+    pushAction(recommendedActions, "Add a local API key for at least one model provider.");
+  }
+  if (missingSecretProviders.length > 0) {
+    pushAction(recommendedActions, "Re-enter missing provider API keys so local secret storage and database state match.");
+  }
+  if (configuredProviders.length > 0 && verifiedLiveProviders.length === 0) {
+    pushAction(recommendedActions, "Verify at least one live external model provider before real OpenClaw E2E.");
   }
   if (failedProviders.length > 0) {
     pushAction(recommendedActions, "Re-verify failed model providers after checking model and API key.");
@@ -163,6 +216,44 @@ export async function getRuntimeDiagnostics(input: {
   });
   if (unsyncedAgents.length > 0) {
     pushAction(recommendedActions, "Run OpenClaw sync after provider and agent configuration changes.");
+  }
+
+  const realProviderE2EReady =
+    openClaw.selected?.status === "ready" &&
+    verifiedLiveProviders.length > 0 &&
+    configuredProviders.length > 0 &&
+    requiredAgents.length > 0 &&
+    unsyncedAgents.length === 0 &&
+    disabledRequiredAgents.length === 0;
+  checks.push({
+    id: "real_provider_e2e",
+    title: "Real provider E2E readiness",
+    status: realProviderE2EReady ? "ok" : "warning",
+    summary: realProviderE2EReady
+      ? "Installed OpenClaw, verified provider, and synced required agents are ready for real E2E."
+      : "Real OpenClaw provider E2E is not ready yet.",
+    details: {
+      openclawReady: openClaw.selected?.status === "ready",
+      verifiedLiveProviders: verifiedLiveProviders.map((provider) => ({
+        id: provider.id,
+        displayName: provider.displayName,
+        defaultModel: provider.defaultModel,
+        lastVerifiedAt: provider.lastVerifiedAt
+      })),
+      verifiedProviderCount: verifiedProviders.length,
+      configuredProviderCount: configuredProviders.length,
+      requiredAgentCount: requiredAgents.length,
+      unsyncedRequiredAgents: unsyncedAgents.map((agent) => agent.id),
+      disabledRequiredAgents: disabledRequiredAgents.map((agent) => agent.id)
+    }
+  });
+  if (!realProviderE2EReady) {
+    if (openClaw.selected?.status !== "ready") {
+      pushAction(recommendedActions, "Repair or select a ready OpenClaw runtime before real provider E2E.");
+    }
+    if (verifiedLiveProviders.length === 0) {
+      pushAction(recommendedActions, "Verify a live external provider with a local API key before running real OpenClaw E2E.");
+    }
   }
 
   const pendingApprovals = await listToolApprovals({ status: "pending", limit: 200 });

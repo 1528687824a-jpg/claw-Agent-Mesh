@@ -473,7 +473,7 @@ const capabilities: RuntimeCapability[] = [
     id: "installer_diagnostics",
     title: "Installer and runtime diagnostics",
     status: "partial",
-    summary: "Launcher, package checks, and runtime diagnostics aggregate exist; repair actions and installer validation are still incomplete.",
+    summary: "Launcher, package checks, runtime diagnostics aggregate, and real-provider E2E readiness diagnostics exist; repair actions and installer validation are still incomplete.",
     routes: [
       "GET /runtime/diagnostics"
     ],
@@ -482,15 +482,15 @@ const capabilities: RuntimeCapability[] = [
       "Package layout audit",
       "No-secret scan",
       "Windows local Tauri shell smoke",
-      "Runtime diagnostics aggregate for database, capabilities, OpenClaw, providers, agents, approvals, Skills/MCP, and schedules"
+      "Runtime diagnostics aggregate for database, capabilities, OpenClaw, providers, agents, approvals, Skills/MCP, and schedules",
+      "Runtime diagnostics reconcile provider secret state and report real-provider E2E readiness without counting local/fake providers as live external providers"
     ],
     missing: [
-      "WSL/Docker/database readiness checks",
       "Repair action API",
       "Cross-platform installer validation"
     ],
     nextActions: [
-      "Add runtime diagnostics after OpenClaw discovery API"
+      "Add repair actions for common runtime diagnostics failures"
     ]
   }
 ];

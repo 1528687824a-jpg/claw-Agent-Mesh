@@ -266,6 +266,9 @@ changes land.
 9. Installer and runtime diagnostics
    - Windows local launcher is repaired.
    - Runtime diagnostics aggregate exists.
+   - Runtime diagnostics now reconcile provider key status with live local
+     secret storage and include a real-provider E2E readiness check that does
+     not count localhost/example fake providers as live external providers.
    - Full installer readiness, Docker/WSL checks, and repair actions still need
      deeper backend diagnostics.
 
@@ -393,8 +396,10 @@ changes land.
     - OpenClaw, WSL/Docker, database, API, worker, desktop bundle, and provider
       checks.
     - Safe repair actions.
-    - Status: partial done. Runtime diagnostics aggregate exists; repair actions
-      and deeper installer checks still need implementation.
+    - Status: partial done. Runtime diagnostics aggregate exists, provider
+      secret-state reconciliation is included, and real-provider E2E readiness
+      is explicit; repair actions and deeper installer checks still need
+      implementation.
 
 ## Current Next Step
 

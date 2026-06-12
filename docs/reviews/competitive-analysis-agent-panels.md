@@ -91,3 +91,9 @@
 - Provider key status is now reconciled against live local secret storage before `/providers` responses and verification paths. This prevents stale database rows from showing `apiKeyConfigured=true` when the local secret file is missing or unreadable.
 - Verification added: `npm run smoke:provider-secret-status` creates a temporary provider, deletes only its temporary secret file, restarts the API, and verifies `/providers` reports the provider as unconfigured with `provider_api_key_missing_in_secret_storage`.
 - Product implication: the panel should stop showing a fake configured/online state when the saved key is not actually available locally.
+
+## 2026-06-12 Update 7
+
+- Runtime diagnostics now use the same live provider secret-state reconciliation as `/providers`, so diagnostics will not claim real-provider readiness from stale key flags.
+- Added a dedicated `real_provider_e2e` diagnostic check. It requires a ready OpenClaw runtime, synced required agents, and at least one verified live external provider; localhost and `*.invalid` fake providers are excluded from real E2E readiness.
+- Verification added: `npm run smoke:runtime-diagnostics-readiness` creates a temporary stale provider secret, restarts the API, and verifies diagnostics report the missing secret plus a real-provider E2E warning.

@@ -131,7 +131,6 @@ import {
   TOOL_APPROVAL_STATUSES,
   TOOL_RISK_LEVELS,
   type ExperienceStatus,
-  type ModelProviderRecord,
   type ToolApprovalRecord
 } from "../../../packages/shared/src/types";
 import { launchDbos, startJobWorkflow } from "../../dbos-worker/src/dbos-runtime";
@@ -159,6 +158,10 @@ import {
   verifyOpenAiCompatibleProvider,
   type ProviderVerificationResult
 } from "./provider-verification";
+import {
+  withLiveProviderSecretStatus,
+  withLiveProviderSecretStatuses
+} from "./provider-secret-status";
 import { checkMcpCommand } from "./mcp-diagnostics";
 import { requireApiToken, timingSafeEqualString } from "./api-auth";
 import {
@@ -785,30 +788,6 @@ function providerVerificationFailure(message: string): ProviderVerificationResul
   };
 }
 
-async function withLiveProviderSecretStatus(provider: ModelProviderRecord): Promise<ModelProviderRecord> {
-  const keyStatus = await getProviderApiKeyStatus(provider.id);
-  if (
-    provider.apiKeyConfigured === keyStatus.configured &&
-    provider.apiKeyFingerprint === keyStatus.fingerprint
-  ) {
-    return provider;
-  }
-
-  const patched = await patchModelProvider(provider.id, {
-    apiKeyConfigured: keyStatus.configured,
-    apiKeyFingerprint: keyStatus.fingerprint,
-    verificationStatus: keyStatus.configured ? provider.verificationStatus : "unknown",
-    lastError: keyStatus.configured ? provider.lastError : "provider_api_key_missing_in_secret_storage"
-  });
-  return patched ?? {
-    ...provider,
-    apiKeyConfigured: keyStatus.configured,
-    apiKeyFingerprint: keyStatus.fingerprint,
-    verificationStatus: keyStatus.configured ? provider.verificationStatus : "unknown",
-    lastError: keyStatus.configured ? provider.lastError : "provider_api_key_missing_in_secret_storage"
-  };
-}
-
 type ProviderVerificationRequest = {
   providerId: string;
   apiKey?: string;
@@ -1134,7 +1113,7 @@ async function main() {
 
   app.get("/providers", async (_request, response, next) => {
     try {
-      const providers = await Promise.all((await listModelProviders()).map(withLiveProviderSecretStatus));
+      const providers = await withLiveProviderSecretStatuses(await listModelProviders());
       response.json({ providers });
     } catch (error) {
       next(error);
