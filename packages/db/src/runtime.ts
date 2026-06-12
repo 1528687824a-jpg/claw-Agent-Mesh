@@ -48,6 +48,12 @@ export type RuntimeUsageResponse = {
       failed: number;
       failedUnknownOutcome: number;
     };
+    tokens: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      callsWithUsage: number;
+    };
     events: {
       jobEvents: number;
       agentEvents: number;
@@ -61,6 +67,18 @@ export type RuntimeUsageResponse = {
     succeeded: number;
     failed: number;
     started: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  }>;
+  byDay: Array<{
+    day: string;
+    total: number;
+    succeeded: number;
+    failed: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
   }>;
   byActionType: Array<{
     actionType: string;
@@ -322,7 +340,15 @@ export async function getRuntimeUsage(input: {
   appendTimeFilters(values, timeWhere, "created_at", input);
   const whereSql = timeWhere.length ? `where ${timeWhere.join(" and ")}` : "";
 
-  const [jobs, modelCalls, events, byAgent, byActionType, recentFailures] = await Promise.all([
+  // Token usage lives in response_payload->result->usage, written by the
+  // OpenClaw adapter for real-mode calls; mock calls have no usage object.
+  const usagePath = `response_payload->'result'->'usage'`;
+  const tokenSums = `
+    coalesce(sum((${usagePath}->>'promptTokens')::bigint), 0)::bigint as prompt_tokens,
+    coalesce(sum((${usagePath}->>'completionTokens')::bigint), 0)::bigint as completion_tokens,
+    coalesce(sum((${usagePath}->>'totalTokens')::bigint), 0)::bigint as total_tokens`;
+
+  const [jobs, modelCalls, events, byAgent, byActionType, recentFailures, tokens, byDay] = await Promise.all([
     pool.query(
       `select
          count(*)::int as total,
@@ -360,7 +386,8 @@ export async function getRuntimeUsage(input: {
          count(*)::int as total,
          count(*) filter (where status = 'succeeded')::int as succeeded,
          count(*) filter (where status in ('failed', 'failed_unknown_outcome'))::int as failed,
-         count(*) filter (where status = 'started')::int as started
+         count(*) filter (where status = 'started')::int as started,
+         ${tokenSums}
        from agent.model_calls
        ${whereSql}
        group by agent_id
@@ -389,6 +416,28 @@ export async function getRuntimeUsage(input: {
        order by updated_at desc
        limit 20`,
       values
+    ),
+    pool.query(
+      `select
+         count(*) filter (where ${usagePath} is not null)::int as calls_with_usage,
+         ${tokenSums}
+       from agent.model_calls
+       ${whereSql}`,
+      values
+    ),
+    pool.query(
+      `select
+         to_char(date_trunc('day', created_at), 'YYYY-MM-DD') as day,
+         count(*)::int as total,
+         count(*) filter (where status = 'succeeded')::int as succeeded,
+         count(*) filter (where status in ('failed', 'failed_unknown_outcome'))::int as failed,
+         ${tokenSums}
+       from agent.model_calls
+       ${whereSql}
+       group by 1
+       order by 1 desc
+       limit 60`,
+      values
     )
   ]);
 
@@ -413,6 +462,12 @@ export async function getRuntimeUsage(input: {
         failed: Number(modelRow.failed ?? 0),
         failedUnknownOutcome: Number(modelRow.failed_unknown_outcome ?? 0)
       },
+      tokens: {
+        promptTokens: Number(tokens.rows[0]?.prompt_tokens ?? 0),
+        completionTokens: Number(tokens.rows[0]?.completion_tokens ?? 0),
+        totalTokens: Number(tokens.rows[0]?.total_tokens ?? 0),
+        callsWithUsage: Number(tokens.rows[0]?.calls_with_usage ?? 0)
+      },
       events: {
         jobEvents: Number(eventRow.job_events ?? 0),
         agentEvents: Number(eventRow.agent_events ?? 0),
@@ -425,7 +480,19 @@ export async function getRuntimeUsage(input: {
       total: Number(row.total ?? 0),
       succeeded: Number(row.succeeded ?? 0),
       failed: Number(row.failed ?? 0),
-      started: Number(row.started ?? 0)
+      started: Number(row.started ?? 0),
+      promptTokens: Number(row.prompt_tokens ?? 0),
+      completionTokens: Number(row.completion_tokens ?? 0),
+      totalTokens: Number(row.total_tokens ?? 0)
+    })),
+    byDay: byDay.rows.map((row) => ({
+      day: row.day,
+      total: Number(row.total ?? 0),
+      succeeded: Number(row.succeeded ?? 0),
+      failed: Number(row.failed ?? 0),
+      promptTokens: Number(row.prompt_tokens ?? 0),
+      completionTokens: Number(row.completion_tokens ?? 0),
+      totalTokens: Number(row.total_tokens ?? 0)
     })),
     byActionType: byActionType.rows.map((row) => ({
       actionType: row.action_type,

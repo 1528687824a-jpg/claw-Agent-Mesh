@@ -8,7 +8,14 @@ export type OpenClawRunResult = {
   sessionId: string;
   text: string;
   textSource: OpenClawTextSource;
+  usage: OpenClawTokenUsage | null;
   raw: unknown;
+};
+
+export type OpenClawTokenUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
 };
 
 export type OpenClawProviderRuntime = {
@@ -123,6 +130,51 @@ export function extractOpenClawText(raw: unknown): {
   return null;
 }
 
+function usageNumber(record: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = Number(record[key]);
+    if (Number.isFinite(value) && value >= 0) {
+      return Math.trunc(value);
+    }
+  }
+  return null;
+}
+
+export function extractOpenClawUsage(raw: unknown): OpenClawTokenUsage | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const value = raw as Record<string, unknown>;
+  const candidates = [value.usage, value.tokenUsage, (value.meta as Record<string, unknown> | undefined)?.usage];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") {
+      continue;
+    }
+    const usage = candidate as Record<string, unknown>;
+    const promptTokens = usageNumber(usage, ["promptTokens", "prompt_tokens", "inputTokens", "input_tokens"]);
+    const completionTokens = usageNumber(usage, [
+      "completionTokens",
+      "completion_tokens",
+      "outputTokens",
+      "output_tokens"
+    ]);
+    if (promptTokens === null && completionTokens === null) {
+      continue;
+    }
+    const totalTokens =
+      usageNumber(usage, ["totalTokens", "total_tokens"]) ??
+      (promptTokens ?? 0) + (completionTokens ?? 0);
+    return {
+      promptTokens: promptTokens ?? 0,
+      completionTokens: completionTokens ?? 0,
+      totalTokens
+    };
+  }
+
+  return null;
+}
+
 export function buildOpenClawAgentArgs(input: {
   agentId: string;
   sessionId: string;
@@ -204,6 +256,7 @@ export async function runOpenClawAgent(input: {
     sessionId: toOpenClawSessionId(input.sessionId),
     text: extracted.text,
     textSource: extracted.source,
+    usage: extractOpenClawUsage(raw),
     raw
   };
 }

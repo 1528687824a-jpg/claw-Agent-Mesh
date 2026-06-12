@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildOpenClawAgentArgs,
-  extractOpenClawText
+  extractOpenClawText,
+  extractOpenClawUsage
 } from "../apps/dbos-worker/src/adapters/openclaw";
 
 test("extractOpenClawText accepts every recognized output shape", () => {
@@ -47,6 +48,38 @@ test("extractOpenClawText rejects empty and unrecognized output", () => {
   assert.equal(extractOpenClawText({ status: "done" }), null);
   assert.equal(extractOpenClawText({ text: "   " }), null);
   assert.equal(extractOpenClawText({ payloads: [{ note: "no text" }] }), null);
+});
+
+test("extractOpenClawUsage normalizes every recognized usage shape", () => {
+  assert.deepEqual(
+    extractOpenClawUsage({ usage: { prompt_tokens: 100, completion_tokens: 40, total_tokens: 140 } }),
+    { promptTokens: 100, completionTokens: 40, totalTokens: 140 }
+  );
+  assert.deepEqual(
+    extractOpenClawUsage({ usage: { promptTokens: 5, completionTokens: 7 } }),
+    { promptTokens: 5, completionTokens: 7, totalTokens: 12 }
+  );
+  assert.deepEqual(
+    extractOpenClawUsage({ usage: { input_tokens: 30, output_tokens: 12 } }),
+    { promptTokens: 30, completionTokens: 12, totalTokens: 42 }
+  );
+  assert.deepEqual(
+    extractOpenClawUsage({ tokenUsage: { promptTokens: 9, completionTokens: 1 } }),
+    { promptTokens: 9, completionTokens: 1, totalTokens: 10 }
+  );
+  assert.deepEqual(
+    extractOpenClawUsage({ meta: { usage: { prompt_tokens: 3, completion_tokens: 4 } } }),
+    { promptTokens: 3, completionTokens: 4, totalTokens: 7 }
+  );
+});
+
+test("extractOpenClawUsage rejects missing or invalid usage", () => {
+  assert.equal(extractOpenClawUsage("plain text"), null);
+  assert.equal(extractOpenClawUsage(null), null);
+  assert.equal(extractOpenClawUsage({ text: "no usage here" }), null);
+  assert.equal(extractOpenClawUsage({ usage: {} }), null);
+  assert.equal(extractOpenClawUsage({ usage: { prompt_tokens: "not-a-number" } }), null);
+  assert.equal(extractOpenClawUsage({ usage: { prompt_tokens: -5 } }), null);
 });
 
 test("buildOpenClawAgentArgs wraps the CLI in a Linux-side timeout", () => {

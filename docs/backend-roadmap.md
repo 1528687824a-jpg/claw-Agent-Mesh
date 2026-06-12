@@ -16,9 +16,14 @@ changes land.
 
 2. Runtime observability
    - Runtime logs and usage summary.
+   - Token usage aggregation in `GET /runtime/usage`: totals, per-agent, and
+     per-day prompt/completion/total tokens read from real-mode OpenClaw
+     usage payloads (see `docs/reviews/competitive-analysis-agent-panels.md`;
+     cost estimation and provider pricing config are still missing).
    - Session events list.
    - Session events SSE stream for live UI updates.
-   - Runtime diagnostics aggregate through `GET /runtime/diagnostics`.
+   - Runtime diagnostics aggregate through `GET /runtime/diagnostics`,
+     including open MCP session stats.
 
 3. Plans and Todo
    - Job plan creation.
