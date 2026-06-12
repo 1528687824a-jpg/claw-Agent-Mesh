@@ -379,7 +379,14 @@ launch/restart command defaults (Phase 19, pulled forward because the whole
 pipeline still defaults to mock execution), then Phase 18 approval-gated
 search/browser calls with per-agent network policy, then Phase 18.5
 architecture cleanup splitting `server.ts` and desktop `main.tsx` into tested
-modules, and Schedule UI only after the real OpenClaw loop is proven. Known
-real-mode risks to fix during Phase 19: brittle OpenClaw output parsing
-(`extractText` heuristics) and possible WSL-side orphan processes after
-timeout kills.
+modules, and Schedule UI only after the real OpenClaw loop is proven. Two
+Phase 19 real-mode risks are already closed: OpenClaw output extraction now
+recognizes explicit shapes and fails loudly on empty/unrecognized output
+(`extractOpenClawText` + `OpenClawOutputError`), and the WSL invocation wraps
+the CLI in a Linux-side `timeout --kill-after` so a Windows-side kill cannot
+leave orphan processes inside the distro. Remaining Phase 19 work: packaged
+OpenClaw launch/restart command defaults and the real provider E2E regression
+itself. Desktop fix landed alongside: DPAPI PowerShell calls no longer flash
+console windows (CREATE_NO_WINDOW), decrypted reads are TTL-cached in-process,
+and the secret-reading Tauri commands are async so they stop blocking the UI
+thread.

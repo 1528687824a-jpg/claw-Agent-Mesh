@@ -7,6 +7,7 @@ export type OpenClawRunResult = {
   mode: "mock" | "real";
   sessionId: string;
   text: string;
+  textSource: OpenClawTextSource;
   raw: unknown;
 };
 
@@ -16,6 +17,26 @@ export type OpenClawProviderRuntime = {
   model: string | null;
   apiKey: string | null;
 };
+
+export type OpenClawTextSource =
+  | "string"
+  | "field:text"
+  | "field:reply"
+  | "field:message"
+  | "field:content"
+  | "field:output"
+  | "payloads"
+  | "finalAssistantVisibleText"
+  | "finalAssistantRawText";
+
+export class OpenClawOutputError extends Error {
+  constructor(
+    message: string,
+    readonly stdoutPreview: string
+  ) {
+    super(message);
+  }
+}
 
 function openClawRealMode() {
   return process.env.OPENCLAW_AGENT_MODE === "real";
@@ -61,37 +82,75 @@ function buildProviderEnv(provider?: OpenClawProviderRuntime | null) {
   return env;
 }
 
-function extractText(raw: unknown): string {
+export function extractOpenClawText(raw: unknown): {
+  text: string;
+  source: OpenClawTextSource;
+} | null {
   if (typeof raw === "string") {
-    return raw;
+    return raw.trim() ? { text: raw, source: "string" } : null;
   }
 
   if (raw && typeof raw === "object") {
     const value = raw as Record<string, unknown>;
-    for (const key of ["text", "reply", "message", "content", "output"]) {
-      if (typeof value[key] === "string") {
-        return value[key] as string;
+    for (const key of ["text", "reply", "message", "content", "output"] as const) {
+      if (typeof value[key] === "string" && (value[key] as string).trim()) {
+        return { text: value[key] as string, source: `field:${key}` };
       }
     }
 
     if (Array.isArray(value.payloads)) {
       for (const payload of value.payloads) {
-        if (payload && typeof payload === "object" && typeof (payload as Record<string, unknown>).text === "string") {
-          return (payload as Record<string, string>).text;
+        if (
+          payload &&
+          typeof payload === "object" &&
+          typeof (payload as Record<string, unknown>).text === "string" &&
+          ((payload as Record<string, unknown>).text as string).trim()
+        ) {
+          return { text: (payload as Record<string, string>).text, source: "payloads" };
         }
       }
     }
 
-    if (typeof value.finalAssistantVisibleText === "string") {
-      return value.finalAssistantVisibleText;
+    if (typeof value.finalAssistantVisibleText === "string" && value.finalAssistantVisibleText.trim()) {
+      return { text: value.finalAssistantVisibleText, source: "finalAssistantVisibleText" };
     }
 
-    if (typeof value.finalAssistantRawText === "string") {
-      return value.finalAssistantRawText;
+    if (typeof value.finalAssistantRawText === "string" && value.finalAssistantRawText.trim()) {
+      return { text: value.finalAssistantRawText, source: "finalAssistantRawText" };
     }
   }
 
-  return JSON.stringify(raw);
+  return null;
+}
+
+export function buildOpenClawAgentArgs(input: {
+  agentId: string;
+  sessionId: string;
+  message: string;
+  timeoutSeconds: number;
+}) {
+  // The Linux-side `timeout` wrapper guarantees cleanup of the WSL process
+  // tree: the outer execFile timeout only kills wsl.exe on the Windows side,
+  // which can leave the CLI running inside the distro.
+  return [
+    "-d",
+    getWslDistro(),
+    "--",
+    "timeout",
+    "--kill-after=5",
+    String(input.timeoutSeconds + 5),
+    getOpenClawCommand(),
+    "agent",
+    "--agent",
+    input.agentId,
+    "--session-id",
+    toOpenClawSessionId(input.sessionId),
+    "--message",
+    input.message,
+    "--json",
+    "--timeout",
+    String(input.timeoutSeconds)
+  ];
 }
 
 export async function runOpenClawAgent(input: {
@@ -104,24 +163,14 @@ export async function runOpenClawAgent(input: {
   if (!openClawRealMode()) {
     return null;
   }
-  const agentId = input.agentId;
 
-  const args = [
-    "-d",
-    getWslDistro(),
-    "--",
-    getOpenClawCommand(),
-    "agent",
-    "--agent",
-    agentId,
-    "--session-id",
-    toOpenClawSessionId(input.sessionId),
-    "--message",
-    input.message,
-    "--json",
-    "--timeout",
-    String(input.timeoutSeconds ?? 600)
-  ];
+  const timeoutSeconds = input.timeoutSeconds ?? 600;
+  const args = buildOpenClawAgentArgs({
+    agentId: input.agentId,
+    sessionId: input.sessionId,
+    message: input.message,
+    timeoutSeconds
+  });
 
   const { stdout } = await execFileAsync("wsl", args, {
     env: {
@@ -129,7 +178,7 @@ export async function runOpenClawAgent(input: {
       ...buildProviderEnv(input.provider)
     },
     maxBuffer: 20 * 1024 * 1024,
-    timeout: (input.timeoutSeconds ?? 600) * 1000 + 30_000,
+    timeout: timeoutSeconds * 1000 + 30_000,
     windowsHide: true
   });
 
@@ -142,10 +191,19 @@ export async function runOpenClawAgent(input: {
     raw = trimmed;
   }
 
+  const extracted = extractOpenClawText(raw);
+  if (!extracted) {
+    throw new OpenClawOutputError(
+      "OpenClaw returned empty or unrecognized output; expected a text/reply/message/content/output/payloads field.",
+      trimmed.slice(0, 2000)
+    );
+  }
+
   return {
     mode: "real",
     sessionId: toOpenClawSessionId(input.sessionId),
-    text: extractText(raw),
+    text: extracted.text,
+    textSource: extracted.source,
     raw
   };
 }
