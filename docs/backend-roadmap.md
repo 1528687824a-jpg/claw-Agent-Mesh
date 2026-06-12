@@ -232,9 +232,13 @@ changes land.
    - Approval-gated web fetch now supports HTTP/HTTPS GET with approval target
      matching, timeout/output caps, redirect revalidation, private-network
      blocking by default, and audit events.
+   - Approval-gated web search and browser snapshot now reuse the same network
+     gateway pattern: exact approval target/command matching, DNS-pinned
+     fetches, private-network blocking unless approved, approval consumption,
+     and audit events.
    - MCP calls now run through approval-gated long-lived sessions.
-   - Web search, browser automation, and broader external network calls still
-     need the same safe gateway pattern.
+   - Full interactive browser automation, per-agent network policy, and broader
+     external network connectors still need safe product rules.
 
 6. Scheduled tasks
    - Durable schedule table and CRUD API exist.
@@ -360,9 +364,10 @@ changes land.
    - Same approval ledger as file/command.
    - Timeout/output caps.
    - Event stream visibility.
-   - Status: partial done. Web fetch and MCP stdio tools/list,
-     resources/list, and tools/call are approval-gated, audited, and reuse
-     long-lived sessions; web search and browser automation are still missing.
+   - Status: partial done. Web fetch, web search, browser snapshot, and MCP
+     stdio tools/list, resources/list, and tools/call are approval-gated,
+     audited, and reuse the same safe gateway principles; richer browser
+     automation and per-agent network policy are still missing.
 
 ### Phase D: Make It Operable Like A Product
 
@@ -392,9 +397,10 @@ invalidate old sessions, and session stats are visible in diagnostics. Process
 lifecycle hardening also landed: API and worker now shut down gracefully on
 SIGINT/SIGTERM, and the scheduler auto-disables schedules after consecutive
 failures. Packaged OpenClaw runtime control defaults now prepare/mark the local
-runtime when host commands are absent. Next, prove the real OpenClaw provider
-end-to-end against an installed runtime, then Phase 18 approval-gated
-search/browser calls with per-agent network policy, then Phase 18.5
+runtime when host commands are absent. Phase 18 now has approval-gated web
+search and browser snapshot calls; next, prove the real OpenClaw provider
+end-to-end against an installed runtime, then finish Phase 18 per-agent network
+policy and richer browser automation, then Phase 18.5
 architecture cleanup splitting `server.ts` and desktop `main.tsx` into tested
 modules, and Schedule UI only after the real OpenClaw loop is proven. Two
 Phase 19 real-mode risks are already closed: OpenClaw output extraction now

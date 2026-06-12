@@ -87,7 +87,7 @@ const capabilities: RuntimeCapability[] = [
     id: "local_api_security",
     title: "Local API security baseline",
     status: "ready",
-    summary: "Non-health routes require a local Honeycomb bearer token, workspace roots are registered through approval, Windows API keys use DPAPI, approvals expire, and web fetch pins DNS targets.",
+    summary: "Non-health routes require a local Honeycomb bearer token, workspace roots are registered through approval, Windows API keys use DPAPI, approvals expire, and web/network gateways pin DNS targets.",
     routes: [
       "GET /health",
       "all non-health API routes"
@@ -106,14 +106,14 @@ const capabilities: RuntimeCapability[] = [
       "Legacy plaintext provider/agent key files migrate on read",
       "Tool approvals get default expiry and approved approvals expire before consumption",
       "API approval decisions record the desktop approval actor instead of trusting client-provided decidedBy",
-      "Web fetch resolves and pins the connect IP for every request and redirect"
+      "Web fetch/search/browser snapshot resolve and pin the connect IP for every request and redirect"
     ],
     missing: [
       "macOS/Linux keychain integration before cross-platform release",
       "Signed/attested desktop identity for multi-user or remote approval scenarios"
     ],
     nextActions: [
-      "Keep the same approval and network gateway pattern for search/browser tools"
+      "Add per-agent network policy defaults on top of the existing approval-gated network gateways"
     ]
   },
   {
@@ -220,7 +220,7 @@ const capabilities: RuntimeCapability[] = [
       "Per-tool approval policy registry"
     ],
     nextActions: [
-      "Add policy defaults per tool and approval coverage for MCP/browser/search calls"
+      "Add policy defaults per tool and coverage for richer browser/network policies"
     ]
   },
   {
@@ -357,20 +357,24 @@ const capabilities: RuntimeCapability[] = [
       "MCP server notifications/streaming surfaced to the UI"
     ],
     nextActions: [
-      "Extend the approval gateway to web search and browser automation"
+      "Surface MCP notifications/streaming to the UI"
     ]
   },
   {
     id: "web_network_tools",
     title: "Web/MCP/network tool gateway",
     status: "partial",
-    summary: "Approval-gated web fetch is implemented with URL matching, timeout/output caps, DNS-pinned redirect checks, private-network blocking, and audit events; browser/search/MCP execution still needs safe gateways.",
+    summary: "Approval-gated web fetch, web search, and browser snapshot are implemented with URL/command matching, timeout/output caps, DNS-pinned redirect checks, private-network blocking, approval consumption, and audit events; full browser automation and per-agent network policy remain.",
     routes: [
-      "POST /tools/web/fetch"
+      "POST /tools/web/fetch",
+      "POST /tools/web/search",
+      "POST /tools/browser/snapshot"
     ],
     implemented: [
       "Reusable approval ledger pattern",
       "Approval-gated HTTP/HTTPS GET",
+      "Approval-gated web search through a configurable search endpoint",
+      "Approval-gated browser snapshot with title, readable text preview, and links",
       "Approval target and command matching",
       "Timeout and output caps",
       "Private-network target blocking unless explicitly allowed",
@@ -378,12 +382,12 @@ const capabilities: RuntimeCapability[] = [
       "Network audit events"
     ],
     missing: [
-      "Approval-gated web search",
-      "Approval-gated browser automation",
+      "Richer interactive browser automation",
       "Per-agent network access policy enforcement"
     ],
     nextActions: [
-      "Implement web search/browser gateways with the same approval pattern"
+      "Add per-agent network policy enforcement",
+      "Add richer interactive browser automation when product flows require it"
     ]
   },
   {
@@ -506,7 +510,7 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     capabilities,
     recommendedNext: [
       "Phase 19: real provider E2E regression against installed OpenClaw",
-      "Phase 18: approval-gated search/browser tool calls and per-agent network policy",
+      "Phase 18 remainder: per-agent network policy and richer browser automation",
       "Phase 18.5: split the large API/desktop modules into smaller tested modules",
       "Phase 20: schedule configuration UI after the real OpenClaw loop is proven"
     ]

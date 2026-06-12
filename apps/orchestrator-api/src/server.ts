@@ -106,9 +106,14 @@ import {
   workspaceRootKey
 } from "./workspace-security";
 import {
+  buildWebSearchUrl,
+  formatBrowserSnapshotCommand,
   formatWebFetchCommand,
+  formatWebSearchCommand,
   normalizeWebFetchUrl,
+  runBrowserSnapshot,
   runWebFetch,
+  runWebSearch,
   WebFetchError
 } from "./web-tools";
 import {
@@ -528,6 +533,25 @@ const webFetchRunSchema = z.object({
   approvalId: z.string().trim().min(1).max(200)
 });
 
+const webSearchRunSchema = z.object({
+  query: z.string().trim().min(1).max(500),
+  endpointUrl: z.string().trim().url().max(4000).optional(),
+  timeoutMs: z.number().int().min(1000).max(60000).optional(),
+  maxBytes: z.number().int().min(1).max(1024 * 1024).optional(),
+  maxResults: z.number().int().min(1).max(20).optional(),
+  allowPrivateNetwork: z.boolean().optional(),
+  approvalId: z.string().trim().min(1).max(200)
+});
+
+const browserSnapshotRunSchema = z.object({
+  url: z.string().trim().url().max(4000),
+  timeoutMs: z.number().int().min(1000).max(60000).optional(),
+  maxBytes: z.number().int().min(1).max(1024 * 1024).optional(),
+  maxLinks: z.number().int().min(0).max(100).optional(),
+  allowPrivateNetwork: z.boolean().optional(),
+  approvalId: z.string().trim().min(1).max(200)
+});
+
 const listApprovalsQuerySchema = z.object({
   status: z.enum(TOOL_APPROVAL_STATUSES).optional(),
   jobId: z.string().trim().min(1).max(200).optional(),
@@ -580,6 +604,10 @@ const WORKSPACE_COMMAND_ACTION_TYPES = new Set([
 ]);
 const WEB_FETCH_TOOL_NAMES = new Set(["web.fetch", "network.fetch", "http.fetch"]);
 const WEB_FETCH_ACTION_TYPES = new Set(["web_fetch", "network_fetch", "http_get"]);
+const WEB_SEARCH_TOOL_NAMES = new Set(["web.search", "network.search", "search.web"]);
+const WEB_SEARCH_ACTION_TYPES = new Set(["web_search", "network_search", "search_query"]);
+const BROWSER_SNAPSHOT_TOOL_NAMES = new Set(["browser.snapshot", "browser.fetch", "web.snapshot"]);
+const BROWSER_SNAPSHOT_ACTION_TYPES = new Set(["browser_snapshot", "browser_fetch", "web_snapshot"]);
 const MCP_TOOL_CALL_TOOL_NAMES = new Set(["mcp.call", "mcp.toolCall", "mcp.tools/call"]);
 const MCP_TOOL_CALL_ACTION_TYPES = new Set(["mcp_call", "mcp_tool_call", "mcp_tools_call"]);
 const MCP_LIST_TOOL_NAMES = new Set(["mcp.list", "mcp.tools/list", "mcp.resources/list"]);
@@ -2390,6 +2418,229 @@ async function main() {
       response.json({
         approval: consumed.approval,
         fetch: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/tools/web/search", async (request, response, next) => {
+    try {
+      const input = webSearchRunSchema.parse(request.body ?? {});
+      const searchUrl = buildWebSearchUrl(input.query, input.endpointUrl);
+      const displayCommand = formatWebSearchCommand(input.query, input.endpointUrl);
+      const approval = await getToolApproval(input.approvalId);
+
+      if (!approval) {
+        response.status(404).json({ error: "approval_not_found" });
+        return;
+      }
+
+      if (approval.status !== "approved") {
+        response.status(409).json({
+          error: "approval_not_approved",
+          approval
+        });
+        return;
+      }
+
+      if (!WEB_SEARCH_TOOL_NAMES.has(approval.toolName) || !WEB_SEARCH_ACTION_TYPES.has(approval.actionType)) {
+        response.status(409).json({
+          error: "approval_not_for_web_search",
+          approval
+        });
+        return;
+      }
+
+      const approvalTarget = approval.target ? normalizeWebFetchUrl(approval.target) : null;
+      if (approvalTarget !== searchUrl) {
+        response.status(409).json({
+          error: "approval_target_mismatch",
+          expected: searchUrl,
+          actual: approvalTarget,
+          approval
+        });
+        return;
+      }
+
+      const approvalCommand = normalizeApprovalCommand(approval.command);
+      if (approvalCommand && approvalCommand !== displayCommand) {
+        response.status(409).json({
+          error: "approval_command_mismatch",
+          expected: displayCommand,
+          actual: approvalCommand,
+          approval
+        });
+        return;
+      }
+
+      const allowPrivateNetwork = input.allowPrivateNetwork === true;
+      if (
+        allowPrivateNetwork &&
+        !approvalFlag(approval.policy, "allowPrivateNetwork") &&
+        !approvalFlag(approval.input, "allowPrivateNetwork")
+      ) {
+        response.status(409).json({
+          error: "private_network_not_approved",
+          approval
+        });
+        return;
+      }
+
+      const consumed = await consumeToolApproval({
+        approvalId: approval.id,
+        consumedBy: "web.search"
+      });
+      if (!consumed.changed || !consumed.approval) {
+        response.status(409).json({
+          error: "approval_not_consumable",
+          reason: consumed.reason,
+          approval: consumed.approval
+        });
+        return;
+      }
+
+      const result = await runWebSearch({
+        query: input.query,
+        endpointUrl: input.endpointUrl,
+        timeoutMs: input.timeoutMs,
+        maxBytes: input.maxBytes,
+        maxResults: input.maxResults,
+        allowPrivateNetwork
+      });
+
+      await appendJobEvent(
+        approval.jobId,
+        "tool.web_search_completed",
+        {
+          approvalId: approval.id,
+          query: result.query,
+          searchUrl: result.searchUrl,
+          resultCount: result.results.length,
+          durationMs: result.fetch.durationMs
+        },
+        {
+          actor: "web.search",
+          stageId: approval.stageId
+        }
+      );
+
+      response.json({
+        approval: consumed.approval,
+        search: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/tools/browser/snapshot", async (request, response, next) => {
+    try {
+      const input = browserSnapshotRunSchema.parse(request.body ?? {});
+      const normalizedUrl = normalizeWebFetchUrl(input.url);
+      const displayCommand = formatBrowserSnapshotCommand(normalizedUrl);
+      const approval = await getToolApproval(input.approvalId);
+
+      if (!approval) {
+        response.status(404).json({ error: "approval_not_found" });
+        return;
+      }
+
+      if (approval.status !== "approved") {
+        response.status(409).json({
+          error: "approval_not_approved",
+          approval
+        });
+        return;
+      }
+
+      if (
+        !BROWSER_SNAPSHOT_TOOL_NAMES.has(approval.toolName) ||
+        !BROWSER_SNAPSHOT_ACTION_TYPES.has(approval.actionType)
+      ) {
+        response.status(409).json({
+          error: "approval_not_for_browser_snapshot",
+          approval
+        });
+        return;
+      }
+
+      const approvalTarget = approval.target ? normalizeWebFetchUrl(approval.target) : null;
+      if (approvalTarget !== normalizedUrl) {
+        response.status(409).json({
+          error: "approval_target_mismatch",
+          expected: normalizedUrl,
+          actual: approvalTarget,
+          approval
+        });
+        return;
+      }
+
+      const approvalCommand = normalizeApprovalCommand(approval.command);
+      if (approvalCommand && approvalCommand !== displayCommand) {
+        response.status(409).json({
+          error: "approval_command_mismatch",
+          expected: displayCommand,
+          actual: approvalCommand,
+          approval
+        });
+        return;
+      }
+
+      const allowPrivateNetwork = input.allowPrivateNetwork === true;
+      if (
+        allowPrivateNetwork &&
+        !approvalFlag(approval.policy, "allowPrivateNetwork") &&
+        !approvalFlag(approval.input, "allowPrivateNetwork")
+      ) {
+        response.status(409).json({
+          error: "private_network_not_approved",
+          approval
+        });
+        return;
+      }
+
+      const consumed = await consumeToolApproval({
+        approvalId: approval.id,
+        consumedBy: "browser.snapshot"
+      });
+      if (!consumed.changed || !consumed.approval) {
+        response.status(409).json({
+          error: "approval_not_consumable",
+          reason: consumed.reason,
+          approval: consumed.approval
+        });
+        return;
+      }
+
+      const result = await runBrowserSnapshot({
+        url: normalizedUrl,
+        timeoutMs: input.timeoutMs,
+        maxBytes: input.maxBytes,
+        maxLinks: input.maxLinks,
+        allowPrivateNetwork
+      });
+
+      await appendJobEvent(
+        approval.jobId,
+        "tool.browser_snapshot_completed",
+        {
+          approvalId: approval.id,
+          url: result.url,
+          finalUrl: result.finalUrl,
+          title: result.title,
+          linkCount: result.links.length,
+          durationMs: result.fetch.durationMs
+        },
+        {
+          actor: "browser.snapshot",
+          stageId: approval.stageId
+        }
+      );
+
+      response.json({
+        approval: consumed.approval,
+        snapshot: result
       });
     } catch (error) {
       next(error);

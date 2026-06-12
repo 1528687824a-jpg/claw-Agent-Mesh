@@ -24,7 +24,8 @@
 
 ## 已在开发/路线图上
 
-- web search/browser 网关（Phase 18；fetch 已上线）。
+- web search/browser 网关（Phase 18；fetch、search、browser snapshot 已上线；
+  richer browser automation 与 per-agent network policy 待做）。
 - IM 多渠道后台 Agent（roadmap #11；飞书骨架已有）。
 - 调度任务绑定模型/工作区/推理强度（roadmap #6）。
 - 远程访问认证（HONEYC~3：每设备 token + 短时 SSE ticket）。
@@ -72,3 +73,9 @@
 - Phase 19 packaged runtime-control defaults are now implemented: when explicit `HONEYCOMB_OPENCLAW_*_COMMAND` variables are absent, the API uses builtin status/start/restart/stop behavior to prepare or mark the local OpenClaw runtime directory.
 - The real OpenClaw smoke script now sends the local Honeycomb API token on all API calls, so the real-provider regression is no longer blocked by the post-HONEYC~3 auth boundary.
 - Remaining P0 backend work after this slice: run the real provider E2E against an installed OpenClaw runtime, then continue Phase 18 web search/browser gateway.
+
+## 2026-06-12 Update 4
+
+- Phase 18 minimal web/search/browser backend is now implemented: `POST /tools/web/search` and `POST /tools/browser/snapshot` reuse the approval-ledger pattern from web fetch, including exact target/command matching, private-network approval checks, DNS-pinned fetches, approval consumption, and audit events.
+- Verification added: `tests/web-tools.test.ts` covers configurable search endpoints and browser snapshot extraction; `npm run smoke:web-search-browser` runs a fake local search/page server, approves both tool calls, and verifies extracted search results plus title/text/links.
+- Remaining Phase 18 work after this slice: per-agent network policy and richer interactive browser automation. Real provider E2E against an installed OpenClaw runtime remains the next Phase 19 regression target.

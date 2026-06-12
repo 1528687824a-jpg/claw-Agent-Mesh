@@ -21,6 +21,23 @@ export type WebFetchInput = {
   allowPrivateNetwork?: boolean;
 };
 
+export type WebSearchInput = {
+  query: string;
+  endpointUrl?: string;
+  timeoutMs?: number;
+  maxBytes?: number;
+  maxResults?: number;
+  allowPrivateNetwork?: boolean;
+};
+
+export type BrowserSnapshotInput = {
+  url: string;
+  timeoutMs?: number;
+  maxBytes?: number;
+  maxLinks?: number;
+  allowPrivateNetwork?: boolean;
+};
+
 export type WebFetchResult = {
   url: string;
   finalUrl: string;
@@ -35,6 +52,37 @@ export type WebFetchResult = {
   byteLength: number;
   truncated: boolean;
   durationMs: number;
+};
+
+export type WebSearchResultItem = {
+  title: string;
+  url: string;
+  snippet: string | null;
+};
+
+export type WebSearchResult = {
+  query: string;
+  searchUrl: string;
+  displayCommand: string;
+  results: WebSearchResultItem[];
+  fetch: Omit<WebFetchResult, "bodyText"> & {
+    bodyPreview: string;
+  };
+};
+
+export type BrowserSnapshotResult = {
+  url: string;
+  finalUrl: string;
+  displayCommand: string;
+  title: string | null;
+  textPreview: string;
+  links: Array<{
+    text: string;
+    url: string;
+  }>;
+  fetch: Omit<WebFetchResult, "bodyText"> & {
+    bodyPreview: string;
+  };
 };
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -124,6 +172,130 @@ export function normalizeWebFetchUrl(value: string) {
 
 export function formatWebFetchCommand(url: string) {
   return `GET ${normalizeWebFetchUrl(url)}`;
+}
+
+function normalizeSearchQuery(query: string) {
+  const trimmed = query.trim().replace(/\s+/g, " ");
+  if (!trimmed) {
+    throw new WebFetchError("invalid_search_query", "Search query must not be empty.");
+  }
+  if (trimmed.length > 500) {
+    throw new WebFetchError("search_query_too_long", "Search query is too long.");
+  }
+  return trimmed;
+}
+
+function defaultSearchEndpoint() {
+  return process.env.HONEYCOMB_WEB_SEARCH_ENDPOINT?.trim() || "https://duckduckgo.com/html/?q={query}";
+}
+
+export function buildWebSearchUrl(query: string, endpointUrl = defaultSearchEndpoint()) {
+  const normalizedQuery = normalizeSearchQuery(query);
+  const endpoint = endpointUrl.includes("{query}")
+    ? endpointUrl.replace(/\{query\}/g, encodeURIComponent(normalizedQuery))
+    : (() => {
+      const parsed = new URL(normalizeWebFetchUrl(endpointUrl));
+      parsed.searchParams.set("q", normalizedQuery);
+      return parsed.toString();
+    })();
+  return normalizeWebFetchUrl(endpoint);
+}
+
+export function formatWebSearchCommand(query: string, endpointUrl = defaultSearchEndpoint()) {
+  return `SEARCH ${normalizeSearchQuery(query)} VIA ${buildWebSearchUrl(query, endpointUrl)}`;
+}
+
+export function formatBrowserSnapshotCommand(url: string) {
+  return `SNAPSHOT ${normalizeWebFetchUrl(url)}`;
+}
+
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'");
+}
+
+function stripHtml(value: string) {
+  return decodeHtmlEntities(value)
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function attributeValue(attributes: string, name: string) {
+  const pattern = new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i");
+  const match = attributes.match(pattern);
+  return match?.[2] ?? match?.[3] ?? match?.[4] ?? null;
+}
+
+function absoluteHttpUrl(href: string, baseUrl: string) {
+  try {
+    const resolved = new URL(decodeHtmlEntities(href), baseUrl);
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
+      return null;
+    }
+    resolved.hash = "";
+    return resolved.toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractTitle(html: string) {
+  const match = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  const title = match ? stripHtml(match[1] ?? "") : "";
+  return title || null;
+}
+
+function extractLinks(html: string, baseUrl: string, maxLinks: number) {
+  const links: Array<{ text: string; url: string }> = [];
+  const seen = new Set<string>();
+  const pattern = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(pattern)) {
+    const href = attributeValue(match[1] ?? "", "href");
+    if (!href) {
+      continue;
+    }
+    const url = absoluteHttpUrl(href, baseUrl);
+    if (!url || seen.has(url)) {
+      continue;
+    }
+    const text = stripHtml(match[2] ?? "");
+    if (!text) {
+      continue;
+    }
+    seen.add(url);
+    links.push({ text: text.slice(0, 240), url });
+    if (links.length >= maxLinks) {
+      break;
+    }
+  }
+  return links;
+}
+
+function searchResultsFromHtml(html: string, baseUrl: string, maxResults: number) {
+  return extractLinks(html, baseUrl, maxResults)
+    .filter((link) => !/duckduckgo\.com\/(y\.js|html|lite|settings|feedback)/i.test(link.url))
+    .map((link) => ({
+      title: link.text,
+      url: link.url,
+      snippet: null
+    }));
+}
+
+function fetchSummary(fetch: WebFetchResult) {
+  const { bodyText: _bodyText, ...rest } = fetch;
+  return {
+    ...rest,
+    bodyPreview: fetch.bodyText.slice(0, 4000)
+  };
 }
 
 async function resolvePinnedTarget(url: URL, allowPrivateNetwork: boolean): Promise<PinnedTarget> {
@@ -343,4 +515,46 @@ export async function runWebFetch(input: WebFetchInput): Promise<WebFetchResult>
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function runWebSearch(input: WebSearchInput): Promise<WebSearchResult> {
+  const query = normalizeSearchQuery(input.query);
+  const searchUrl = buildWebSearchUrl(query, input.endpointUrl);
+  const maxResults = clampNumber(input.maxResults, 8, 1, 20);
+  const fetch = await runWebFetch({
+    url: searchUrl,
+    timeoutMs: input.timeoutMs,
+    maxBytes: input.maxBytes,
+    allowPrivateNetwork: input.allowPrivateNetwork
+  });
+
+  return {
+    query,
+    searchUrl,
+    displayCommand: formatWebSearchCommand(query, input.endpointUrl),
+    results: searchResultsFromHtml(fetch.bodyText, fetch.finalUrl, maxResults),
+    fetch: fetchSummary(fetch)
+  };
+}
+
+export async function runBrowserSnapshot(input: BrowserSnapshotInput): Promise<BrowserSnapshotResult> {
+  const normalizedUrl = normalizeWebFetchUrl(input.url);
+  const maxLinks = clampNumber(input.maxLinks, 20, 0, 100);
+  const fetch = await runWebFetch({
+    url: normalizedUrl,
+    timeoutMs: input.timeoutMs,
+    maxBytes: input.maxBytes,
+    allowPrivateNetwork: input.allowPrivateNetwork
+  });
+  const text = stripHtml(fetch.bodyText);
+
+  return {
+    url: normalizedUrl,
+    finalUrl: fetch.finalUrl,
+    displayCommand: formatBrowserSnapshotCommand(normalizedUrl),
+    title: extractTitle(fetch.bodyText),
+    textPreview: text.slice(0, 4000),
+    links: extractLinks(fetch.bodyText, fetch.finalUrl, maxLinks),
+    fetch: fetchSummary(fetch)
+  };
 }
