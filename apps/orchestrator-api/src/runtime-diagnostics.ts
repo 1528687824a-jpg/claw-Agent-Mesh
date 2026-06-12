@@ -4,6 +4,7 @@ import { pool } from "../../../packages/db/src/pool";
 import { listDueScheduledTasks, listScheduledTasks } from "../../../packages/db/src/schedules";
 import { listMcpServers, listSkills } from "../../../packages/db/src/tool-registry";
 import { getRuntimeCapabilities } from "./capabilities";
+import { listMcpSessionStats } from "./mcp-sessions";
 import { discoverOpenClawRuntime } from "./openclaw-runtime";
 
 export type RuntimeDiagnosticStatus = "ok" | "warning" | "error" | "unknown";
@@ -208,6 +209,21 @@ export async function getRuntimeDiagnostics(input: {
   if (unavailableMcpServers.length > 0) {
     pushAction(recommendedActions, "Run MCP diagnostics and repair missing commands.");
   }
+
+  const mcpSessions = listMcpSessionStats();
+  checks.push({
+    id: "mcp_sessions",
+    title: "MCP sessions",
+    status: "ok",
+    summary:
+      mcpSessions.length === 0
+        ? "No long-lived MCP sessions are open."
+        : `${mcpSessions.length} long-lived MCP session(s) are open.`,
+    details: {
+      open: mcpSessions.length,
+      sessions: mcpSessions
+    }
+  });
 
   const schedules = await listScheduledTasks({ limit: 200 });
   const dueSchedules = await listDueScheduledTasks(new Date(), 200);

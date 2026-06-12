@@ -344,13 +344,15 @@ const capabilities: RuntimeCapability[] = [
       "MCP discovery results cached into server config for UI use",
       "Per-agent MCP access policies for tools/list, resources/list, and tools/call",
       "MCP timeout and output caps",
-      "MCP call audit events"
+      "MCP call audit events",
+      "Long-lived MCP stdio sessions with idle cleanup and config-change invalidation",
+      "MCP session stats in runtime diagnostics"
     ],
     missing: [
-      "Long-lived MCP sessions"
+      "MCP server notifications/streaming surfaced to the UI"
     ],
     nextActions: [
-      "Add MCP long-lived sessions"
+      "Extend the approval gateway to web search and browser automation"
     ]
   },
   {
@@ -373,11 +375,10 @@ const capabilities: RuntimeCapability[] = [
     missing: [
       "Approval-gated web search",
       "Approval-gated browser automation",
-      "Long-lived MCP execution sessions",
       "Per-agent network access policy enforcement"
     ],
     nextActions: [
-      "Implement web search/browser gateways and MCP session reuse"
+      "Implement web search/browser gateways with the same approval pattern"
     ]
   },
   {
@@ -399,7 +400,8 @@ const capabilities: RuntimeCapability[] = [
       "Next-run calculation for once/daily/interval tasks",
       "Manual trigger path that creates a real job",
       "Worker scheduler runner",
-      "Startup catch-up for overdue tasks"
+      "Startup catch-up for overdue tasks",
+      "Consecutive-failure tracking with automatic disable at a configurable threshold"
     ],
     missing: [
       "Workspace/model/reasoning configuration per schedule"
@@ -498,10 +500,9 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     summary,
     capabilities,
     recommendedNext: [
-      "Phase 17E: MCP long-lived session reuse",
+      "Phase 19 (pulled forward): packaged OpenClaw launch/restart command defaults and real provider E2E regression",
       "Phase 18: approval-gated search/browser tool calls and per-agent network policy",
       "Phase 18.5: split the large API/desktop modules into smaller tested modules",
-      "Phase 19: packaged OpenClaw launch/restart command defaults and real provider E2E regression",
       "Phase 20: schedule configuration UI after the real OpenClaw loop is proven"
     ]
   };

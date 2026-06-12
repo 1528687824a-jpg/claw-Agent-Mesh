@@ -150,7 +150,7 @@ import {
 } from "../../../packages/runtime/src/local-secrets";
 import { verifyOpenAiCompatibleProvider } from "./provider-verification";
 import { checkMcpCommand } from "./mcp-diagnostics";
-import { requireApiToken } from "./api-auth";
+import { requireApiToken, timingSafeEqualString } from "./api-auth";
 import {
   formatMcpListCommand,
   formatMcpListTarget,
@@ -161,6 +161,8 @@ import {
   runMcpToolCall,
   runMcpToolsList
 } from "./mcp-tools";
+import { closeAllMcpSessions, invalidateMcpSession } from "./mcp-sessions";
+import { closePool } from "../../../packages/db/src/pool";
 import { getRuntimeDiagnostics } from "./runtime-diagnostics";
 
 const unstickModelCallSchema = z.object({
@@ -706,7 +708,7 @@ function requireAdminToken(request: express.Request, response: express.Response)
   }
 
   const actualToken = request.header("x-admin-token")?.trim();
-  if (actualToken !== expectedToken) {
+  if (!actualToken || !timingSafeEqualString(actualToken, expectedToken)) {
     response.status(401).json({ error: "invalid_admin_token" });
     return false;
   }
@@ -1204,7 +1206,9 @@ async function main() {
   app.post("/mcp-servers", async (request, response, next) => {
     try {
       const input = mcpServerSchema.parse(request.body ?? {});
-      response.status(201).json(await upsertMcpServer(input));
+      const server = await upsertMcpServer(input);
+      invalidateMcpSession(server.id);
+      response.status(201).json(server);
     } catch (error) {
       next(error);
     }
@@ -1218,6 +1222,7 @@ async function main() {
         response.status(404).json({ error: "mcp_server_not_found" });
         return;
       }
+      invalidateMcpSession(server.id);
       response.json(server);
     } catch (error) {
       next(error);
@@ -1394,7 +1399,8 @@ async function main() {
           serverName: server.name,
           resultPreview: previewJson(result.result),
           stderrPreview: result.stderr.slice(0, 4000),
-          durationMs: result.durationMs
+          durationMs: result.durationMs,
+          session: result.session
         },
         {
           actor: "mcp.tools/list",
@@ -1512,7 +1518,8 @@ async function main() {
           serverName: server.name,
           resultPreview: previewJson(result.result),
           stderrPreview: result.stderr.slice(0, 4000),
-          durationMs: result.durationMs
+          durationMs: result.durationMs,
+          session: result.session
         },
         {
           actor: "mcp.resources/list",
@@ -1628,7 +1635,8 @@ async function main() {
           displayCommand: result.displayCommand,
           resultPreview: JSON.stringify(result.result).slice(0, 4000),
           stderrPreview: result.stderr.slice(0, 4000),
-          durationMs: result.durationMs
+          durationMs: result.durationMs,
+          session: result.session
         },
         {
           actor: "mcp.tools/call",
@@ -2888,9 +2896,39 @@ async function main() {
     response.status(500).json({ error: "internal_error" });
   });
 
-  app.listen(port, host, () => {
+  const httpServer = app.listen(port, host, () => {
     console.log(`Orchestrator API listening on http://${host}:${port}`);
   });
+
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    console.log(`Received ${signal}, shutting down orchestrator API`);
+
+    const forceExitTimer = setTimeout(() => {
+      console.error("Graceful shutdown timed out, forcing exit");
+      process.exit(1);
+    }, 10_000);
+    forceExitTimer.unref();
+
+    closeAllMcpSessions();
+    httpServer.close(() => {
+      void closePool()
+        .catch((error) => {
+          console.error("Failed to close database pool", error);
+        })
+        .finally(() => {
+          process.exit(0);
+        });
+    });
+    httpServer.closeAllConnections();
+  };
+
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
 }
 
 main().catch((error) => {

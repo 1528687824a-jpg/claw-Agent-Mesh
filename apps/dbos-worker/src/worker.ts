@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { DBOS } from "@dbos-inc/dbos-sdk";
+import { closePool } from "../../../packages/db/src/pool";
 import { launchDbos } from "./dbos-runtime";
 import { startScheduleRunner } from "./scheduler";
 
@@ -20,8 +22,9 @@ async function main() {
   await launchDbos();
   console.log("DBOS worker launched for workflow recovery");
 
+  let stopScheduler: (() => void) | null = null;
   if (schedulerEnabled()) {
-    startScheduleRunner({
+    stopScheduler = startScheduleRunner({
       intervalMs: schedulerIntervalMs(),
       limit: schedulerBatchSize(),
       runImmediately: true
@@ -30,6 +33,37 @@ async function main() {
   } else {
     console.log("Honeycomb scheduler runner disabled");
   }
+
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    console.log(`Received ${signal}, shutting down DBOS worker`);
+
+    const forceExitTimer = setTimeout(() => {
+      console.error("Graceful shutdown timed out, forcing exit");
+      process.exit(1);
+    }, 10_000);
+    forceExitTimer.unref();
+
+    stopScheduler?.();
+    void DBOS.shutdown()
+      .catch((error) => {
+        console.error("DBOS shutdown failed", error);
+      })
+      .then(() => closePool())
+      .catch((error) => {
+        console.error("Failed to close database pool", error);
+      })
+      .finally(() => {
+        process.exit(0);
+      });
+  };
+
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
 
   await new Promise(() => {
     // Keep this optional worker process alive for recovery and scheduled tasks.

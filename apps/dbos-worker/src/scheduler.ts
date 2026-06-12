@@ -8,6 +8,11 @@ import {
   markScheduledTaskTriggered,
   patchScheduledTask
 } from "../../../packages/db/src/schedules";
+import {
+  applyScheduleFailure,
+  applyScheduleSuccess,
+  resolveScheduleMaxConsecutiveFailures
+} from "../../../packages/db/src/schedule-policy";
 import type { ScheduledTaskRecord } from "../../../packages/shared/src/types";
 import { startJobWorkflow } from "./dbos-runtime";
 
@@ -51,6 +56,7 @@ export async function runDueSchedulesOnce(input: {
   const checkedAt = checkedAtDate.toISOString();
   const startWorkflow = input.startWorkflow ?? true;
   const requesterIdPrefix = input.requesterIdPrefix ?? "schedule";
+  const maxConsecutiveFailures = resolveScheduleMaxConsecutiveFailures();
   const schedules = await claimDueScheduledTasks(checkedAtDate, input.limit ?? 10);
   const results: SchedulerResult[] = [];
 
@@ -88,6 +94,11 @@ export async function runDueSchedulesOnce(input: {
         status: startWorkflow ? "queued" : "idle"
       });
 
+      const successReset = applyScheduleSuccess(schedule.metadata);
+      if (successReset.changed) {
+        await patchScheduledTask(schedule.id, { metadata: successReset.metadata });
+      }
+
       results.push({
         scheduleId: schedule.id,
         jobId: job.id,
@@ -96,7 +107,14 @@ export async function runDueSchedulesOnce(input: {
         error: null
       });
     } catch (error) {
-      const message = safeErrorMessage(error);
+      const failure = applyScheduleFailure({
+        metadata: schedule.metadata,
+        maxConsecutiveFailures
+      });
+      const message = failure.shouldDisable
+        ? `${safeErrorMessage(error)} (schedule auto-disabled after ${failure.consecutiveFailures} consecutive failures)`
+        : safeErrorMessage(error);
+
       if (jobId) {
         await markScheduledTaskTriggered({
           scheduleId: schedule.id,
@@ -112,6 +130,11 @@ export async function runDueSchedulesOnce(input: {
           nextRunAt: nextRunAfterFailure(schedule, checkedAtDate)
         });
       }
+
+      await patchScheduledTask(schedule.id, {
+        metadata: failure.metadata,
+        ...(failure.shouldDisable ? { enabled: false, lastError: message } : {})
+      });
 
       results.push({
         scheduleId: schedule.id,

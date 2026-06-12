@@ -60,6 +60,13 @@ changes land.
      results cached into MCP server config for UI use.
    - Per-agent MCP access policy API and enforcement for tools/list,
      resources/list, and tools/call.
+   - Long-lived MCP stdio sessions: the initialize handshake runs once per
+     server, later calls reuse the same process, idle sessions are swept after
+     a timeout (`HONEYCOMB_MCP_SESSION_IDLE_MS`), and config changes or
+     enable/disable flips invalidate the old session. JSON-RPC error responses
+     keep the session; timeout/output-cap/protocol failures drop it.
+   - MCP session stats are visible through `GET /runtime/diagnostics`, and MCP
+     audit events record session pid/request count/reuse.
 
 9. Scheduled task foundation
    - Schedule table and CRUD API.
@@ -68,6 +75,10 @@ changes land.
    - Manual trigger creates a real job.
    - Worker scheduler runner claims due tasks and catches up overdue tasks on
      worker startup.
+   - Consecutive trigger failures are counted in schedule metadata and the
+     schedule auto-disables at a configurable threshold
+     (`HONEYCOMB_SCHEDULE_MAX_CONSECUTIVE_FAILURES`, default 5); a successful
+     trigger resets the counter.
 
 10. Packaging/layout checks
    - Package layout audit script.
@@ -125,10 +136,23 @@ changes land.
    - DBOS workflow launch helpers live with the worker runtime.
    - `node:test` unit coverage now covers web fetch safety, approval expiry
      policy, API auth token parsing, workspace registration target
-     normalization, MCP policy matching, and secret cache/corruption behavior.
+     normalization, MCP policy matching, secret cache/corruption behavior,
+     MCP long-lived session lifecycle (reuse, crash recovery, idle sweep,
+     timeout/output-cap destruction, config invalidation), and schedule
+     failure policy.
    - HONEYC review notes are now tracked under `docs/reviews/`.
    - GitHub Actions runs `npm run test:unit`, and Docker quickstart CI uses the
      local API token model.
+
+15. Process lifecycle hardening
+   - The orchestrator API handles SIGINT/SIGTERM: it stops accepting
+     connections, closes open SSE connections, shuts down long-lived MCP
+     sessions, and closes the Postgres pool before exit (10s force-exit
+     fallback).
+   - The DBOS worker handles SIGINT/SIGTERM: it stops the scheduler runner,
+     shuts down DBOS, and closes the Postgres pool before exit.
+   - Admin token comparison now uses the same timing-safe equality helper as
+     the API bearer token.
 
 ## Partial Or Not Yet Real Enough
 
@@ -183,15 +207,17 @@ changes land.
      exists and stores the latest discovery result in server config.
    - Per-agent MCP access policies can allow tools/list, resources/list, all
      tools, or a specific tool allow-list.
-   - Long-lived MCP sessions are still missing.
+   - Long-lived MCP sessions with idle cleanup and config invalidation now
+     exist; MCP server notifications/streaming are still not surfaced.
 
 5. Web/MCP/network tool gateway
    - File writes and command runs are approval-gated.
    - Approval-gated web fetch now supports HTTP/HTTPS GET with approval target
      matching, timeout/output caps, redirect revalidation, private-network
      blocking by default, and audit events.
-   - MCP calls, web search, browser automation, and broader external network
-     calls still need the same safe gateway pattern.
+   - MCP calls now run through approval-gated long-lived sessions.
+   - Web search, browser automation, and broader external network calls still
+     need the same safe gateway pattern.
 
 6. Scheduled tasks
    - Durable schedule table and CRUD API exist.
@@ -309,16 +335,17 @@ changes land.
    - Diagnostics and enable/disable switches.
    - Per-agent policy.
    - Status: partial done. Registry, command diagnostics, approval-gated stdio
-     calls/discovery, and per-agent policy enforcement exist; long-lived MCP
-     sessions are still missing.
+     calls/discovery, per-agent policy enforcement, and long-lived MCP
+     sessions with idle cleanup exist; MCP notifications/streaming are still
+     missing.
 
 9. Add approval-gated Web/MCP calls.
    - Same approval ledger as file/command.
    - Timeout/output caps.
    - Event stream visibility.
-   - Status: partial done. Web fetch and minimal MCP stdio tools/list,
-     resources/list, and tools/call are approval-gated and audited; web search,
-     browser automation, and long-lived MCP sessions are still missing.
+   - Status: partial done. Web fetch and MCP stdio tools/list,
+     resources/list, and tools/call are approval-gated, audited, and reuse
+     long-lived sessions; web search and browser automation are still missing.
 
 ### Phase D: Make It Operable Like A Product
 
@@ -342,18 +369,17 @@ changes land.
 
 ## Current Next Step
 
-The `HONEYC~2.MD` P0 Windows-local security hardening is now closed for S1,
-S2, S4, S5, and S6, and the first `HONEYC~3.MD` follow-ups are underway:
-review docs are in-repo, local secrets have TTL caching, unit tests expanded,
-and CI runs them. Next, finish Phase 17E MCP long-lived session reuse, then
-Phase 18 approval-gated search/browser calls, Phase 18.5 architecture cleanup,
-and Phase 19 packaged OpenClaw launch/restart plus real provider E2E before
-Schedule UI. The
-backend approval ledger, approval-gated local tools, approval-gated web fetch,
-approval-gated MCP tools/list/resources/list/tools/call, desktop approval queue,
-provider registry, agent registry, worker provider/agent routing, OpenClaw
-prompt/config sync, Skills/MCP registry foundation, per-agent MCP policy,
-scheduled task runner, and diagnostics surface now exist; the next highest-value
-slices are extending the same approval pattern to search/browser tools, proving
-a real OpenClaw provider end-to-end, and separating the large API/desktop files
-into tested modules.
+Phase 17E MCP long-lived session reuse is now complete: MCP stdio calls share
+one initialized process per server, idle sessions are swept, config changes
+invalidate old sessions, and session stats are visible in diagnostics. Process
+lifecycle hardening also landed: API and worker now shut down gracefully on
+SIGINT/SIGTERM, and the scheduler auto-disables schedules after consecutive
+failures. Next, prove the real OpenClaw provider end-to-end with packaged
+launch/restart command defaults (Phase 19, pulled forward because the whole
+pipeline still defaults to mock execution), then Phase 18 approval-gated
+search/browser calls with per-agent network policy, then Phase 18.5
+architecture cleanup splitting `server.ts` and desktop `main.tsx` into tested
+modules, and Schedule UI only after the real OpenClaw loop is proven. Known
+real-mode risks to fix during Phase 19: brittle OpenClaw output parsing
+(`extractText` heuristics) and possible WSL-side orphan processes after
+timeout kills.
