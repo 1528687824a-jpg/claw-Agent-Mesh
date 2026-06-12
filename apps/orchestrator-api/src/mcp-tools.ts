@@ -29,6 +29,34 @@ export type McpToolCallResult = {
   durationMs: number;
 };
 
+export type McpListResult = {
+  serverId: string;
+  serverName: string;
+  method: "tools/list" | "resources/list";
+  displayCommand: string;
+  result: unknown;
+  stderr: string;
+  durationMs: number;
+};
+
+type McpRequestInput = {
+  server: McpServerRecord;
+  method: "tools/call" | "tools/list" | "resources/list";
+  params?: Record<string, unknown>;
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+};
+
+type McpRequestResult = {
+  serverId: string;
+  serverName: string;
+  method: "tools/call" | "tools/list" | "resources/list";
+  displayCommand: string;
+  result: unknown;
+  stderr: string;
+  durationMs: number;
+};
+
 type JsonRpcMessage = {
   jsonrpc?: string;
   id?: string | number | null;
@@ -104,7 +132,15 @@ export function formatMcpToolCommand(server: McpServerRecord, toolName: string) 
   return `MCP ${server.name} tools/call ${toolName}`;
 }
 
-export async function runMcpToolCall(input: McpToolCallInput): Promise<McpToolCallResult> {
+export function formatMcpListTarget(serverId: string, method: "tools/list" | "resources/list") {
+  return `mcp://${encodeURIComponent(serverId)}/${method}`;
+}
+
+export function formatMcpListCommand(server: McpServerRecord, method: "tools/list" | "resources/list") {
+  return `MCP ${server.name} ${method}`;
+}
+
+async function runMcpRequest(input: McpRequestInput): Promise<McpRequestResult> {
   if (!input.server.enabled) {
     throw new McpToolError("mcp_server_disabled", "MCP server is disabled.", {
       serverId: input.server.id
@@ -253,14 +289,12 @@ export async function runMcpToolCall(input: McpToolCallInput): Promise<McpToolCa
       const toolCall = await request({
         jsonrpc: "2.0",
         id: 2,
-        method: "tools/call",
-        params: {
-          name: input.toolName,
-          arguments: input.arguments ?? {}
-        }
+        method: input.method,
+        params: input.params ?? {}
       });
       if (toolCall.error) {
-        throw new McpToolError("mcp_tool_call_failed", toolCall.error.message ?? "MCP tool call failed.", {
+        throw new McpToolError("mcp_request_failed", toolCall.error.message ?? "MCP request failed.", {
+          method: input.method,
           error: toolCall.error
         });
       }
@@ -269,7 +303,7 @@ export async function runMcpToolCall(input: McpToolCallInput): Promise<McpToolCa
         resolve({
           serverId: input.server.id,
           serverName: input.server.name,
-          toolName: input.toolName,
+          method: input.method,
           displayCommand,
           result: toolCall.result,
           stderr: clipped(stderr, 8000),
@@ -278,4 +312,64 @@ export async function runMcpToolCall(input: McpToolCallInput): Promise<McpToolCa
       });
     })().catch(fail);
   });
+}
+
+export async function runMcpToolCall(input: McpToolCallInput): Promise<McpToolCallResult> {
+  const result = await runMcpRequest({
+    server: input.server,
+    method: "tools/call",
+    params: {
+      name: input.toolName,
+      arguments: input.arguments ?? {}
+    },
+    timeoutMs: input.timeoutMs,
+    maxOutputBytes: input.maxOutputBytes
+  });
+  return {
+    serverId: result.serverId,
+    serverName: result.serverName,
+    toolName: input.toolName,
+    displayCommand: result.displayCommand,
+    result: result.result,
+    stderr: result.stderr,
+    durationMs: result.durationMs
+  };
+}
+
+export async function runMcpToolsList(input: {
+  server: McpServerRecord;
+  cursor?: string;
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+}): Promise<McpListResult> {
+  const result = await runMcpRequest({
+    server: input.server,
+    method: "tools/list",
+    params: input.cursor ? { cursor: input.cursor } : {},
+    timeoutMs: input.timeoutMs,
+    maxOutputBytes: input.maxOutputBytes
+  });
+  return {
+    ...result,
+    method: "tools/list"
+  };
+}
+
+export async function runMcpResourcesList(input: {
+  server: McpServerRecord;
+  cursor?: string;
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+}): Promise<McpListResult> {
+  const result = await runMcpRequest({
+    server: input.server,
+    method: "resources/list",
+    params: input.cursor ? { cursor: input.cursor } : {},
+    timeoutMs: input.timeoutMs,
+    maxOutputBytes: input.maxOutputBytes
+  });
+  return {
+    ...result,
+    method: "resources/list"
+  };
 }

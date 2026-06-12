@@ -134,10 +134,14 @@ import {
 import { verifyOpenAiCompatibleProvider } from "./provider-verification";
 import { checkMcpCommand } from "./mcp-diagnostics";
 import {
+  formatMcpListCommand,
+  formatMcpListTarget,
   formatMcpToolCommand,
   formatMcpToolTarget,
   McpToolError,
-  runMcpToolCall
+  runMcpResourcesList,
+  runMcpToolCall,
+  runMcpToolsList
 } from "./mcp-tools";
 import { getRuntimeDiagnostics } from "./runtime-diagnostics";
 
@@ -264,6 +268,13 @@ const patchMcpServerSchema = mcpServerSchema.partial();
 const mcpToolCallSchema = z.object({
   toolName: z.string().trim().min(1).max(200),
   arguments: z.record(z.unknown()).optional(),
+  timeoutMs: z.number().int().min(1000).max(120000).optional(),
+  maxOutputBytes: z.number().int().min(1).max(1024 * 1024).optional(),
+  approvalId: z.string().trim().min(1).max(200)
+});
+
+const mcpListSchema = z.object({
+  cursor: z.string().trim().min(1).max(2000).optional(),
   timeoutMs: z.number().int().min(1000).max(120000).optional(),
   maxOutputBytes: z.number().int().min(1).max(1024 * 1024).optional(),
   approvalId: z.string().trim().min(1).max(200)
@@ -500,6 +511,8 @@ const WEB_FETCH_TOOL_NAMES = new Set(["web.fetch", "network.fetch", "http.fetch"
 const WEB_FETCH_ACTION_TYPES = new Set(["web_fetch", "network_fetch", "http_get"]);
 const MCP_TOOL_CALL_TOOL_NAMES = new Set(["mcp.call", "mcp.toolCall", "mcp.tools/call"]);
 const MCP_TOOL_CALL_ACTION_TYPES = new Set(["mcp_call", "mcp_tool_call", "mcp_tools_call"]);
+const MCP_LIST_TOOL_NAMES = new Set(["mcp.list", "mcp.tools/list", "mcp.resources/list"]);
+const MCP_LIST_ACTION_TYPES = new Set(["mcp_list", "mcp_tools_list", "mcp_resources_list"]);
 
 function normalizeApprovalTarget(target: string | null) {
   if (!target) {
@@ -514,6 +527,25 @@ function normalizeApprovalCommand(command: string | null) {
 
 function approvalFlag(value: Record<string, unknown> | null | undefined, key: string) {
   return value?.[key] === true;
+}
+
+function previewJson(value: unknown, maxLength = 4000) {
+  try {
+    return JSON.stringify(value).slice(0, maxLength);
+  } catch {
+    return String(value).slice(0, maxLength);
+  }
+}
+
+function mcpDiscoveryConfigEntry(result: unknown) {
+  const value = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
+  const tools = Array.isArray(value.tools) ? value.tools : undefined;
+  const resources = Array.isArray(value.resources) ? value.resources : undefined;
+  return {
+    checkedAt: new Date().toISOString(),
+    count: tools?.length ?? resources?.length ?? null,
+    result
+  };
 }
 
 function stableIdFromName(prefix: string, value: string) {
@@ -1106,6 +1138,228 @@ async function main() {
       response.json({
         server: patched,
         check
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/mcp-servers/:serverId/tools/list", async (request, response, next) => {
+    try {
+      const input = mcpListSchema.parse(request.body ?? {});
+      const server = await getMcpServer(request.params.serverId);
+      if (!server) {
+        response.status(404).json({ error: "mcp_server_not_found" });
+        return;
+      }
+
+      const expectedTarget = formatMcpListTarget(server.id, "tools/list");
+      const expectedCommand = formatMcpListCommand(server, "tools/list");
+      const approval = await getToolApproval(input.approvalId);
+
+      if (!approval) {
+        response.status(404).json({ error: "approval_not_found" });
+        return;
+      }
+
+      if (approval.status !== "approved") {
+        response.status(409).json({
+          error: "approval_not_approved",
+          approval
+        });
+        return;
+      }
+
+      if (!MCP_LIST_TOOL_NAMES.has(approval.toolName) || !MCP_LIST_ACTION_TYPES.has(approval.actionType)) {
+        response.status(409).json({
+          error: "approval_not_for_mcp_list",
+          approval
+        });
+        return;
+      }
+
+      if (approval.target !== expectedTarget) {
+        response.status(409).json({
+          error: "approval_target_mismatch",
+          expected: expectedTarget,
+          actual: approval.target,
+          approval
+        });
+        return;
+      }
+
+      const approvalCommand = normalizeApprovalCommand(approval.command);
+      if (approvalCommand && approvalCommand !== expectedCommand) {
+        response.status(409).json({
+          error: "approval_command_mismatch",
+          expected: expectedCommand,
+          actual: approvalCommand,
+          approval
+        });
+        return;
+      }
+
+      const consumed = await consumeToolApproval({
+        approvalId: approval.id,
+        consumedBy: "mcp.tools/list"
+      });
+      if (!consumed.changed || !consumed.approval) {
+        response.status(409).json({
+          error: "approval_not_consumable",
+          reason: consumed.reason,
+          approval: consumed.approval
+        });
+        return;
+      }
+
+      const result = await runMcpToolsList({
+        server,
+        cursor: input.cursor,
+        timeoutMs: input.timeoutMs,
+        maxOutputBytes: input.maxOutputBytes
+      });
+      const patched = await patchMcpServer(server.id, {
+        status: "available",
+        lastCheckedAt: new Date().toISOString(),
+        lastError: null,
+        config: {
+          ...server.config,
+          lastToolsList: mcpDiscoveryConfigEntry(result.result)
+        }
+      });
+
+      await appendJobEvent(
+        approval.jobId,
+        "tool.mcp_tools_list_completed",
+        {
+          approvalId: approval.id,
+          serverId: server.id,
+          serverName: server.name,
+          resultPreview: previewJson(result.result),
+          stderrPreview: result.stderr.slice(0, 4000),
+          durationMs: result.durationMs
+        },
+        {
+          actor: "mcp.tools/list",
+          stageId: approval.stageId
+        }
+      );
+
+      response.json({
+        approval: consumed.approval,
+        server: patched,
+        list: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/mcp-servers/:serverId/resources/list", async (request, response, next) => {
+    try {
+      const input = mcpListSchema.parse(request.body ?? {});
+      const server = await getMcpServer(request.params.serverId);
+      if (!server) {
+        response.status(404).json({ error: "mcp_server_not_found" });
+        return;
+      }
+
+      const expectedTarget = formatMcpListTarget(server.id, "resources/list");
+      const expectedCommand = formatMcpListCommand(server, "resources/list");
+      const approval = await getToolApproval(input.approvalId);
+
+      if (!approval) {
+        response.status(404).json({ error: "approval_not_found" });
+        return;
+      }
+
+      if (approval.status !== "approved") {
+        response.status(409).json({
+          error: "approval_not_approved",
+          approval
+        });
+        return;
+      }
+
+      if (!MCP_LIST_TOOL_NAMES.has(approval.toolName) || !MCP_LIST_ACTION_TYPES.has(approval.actionType)) {
+        response.status(409).json({
+          error: "approval_not_for_mcp_list",
+          approval
+        });
+        return;
+      }
+
+      if (approval.target !== expectedTarget) {
+        response.status(409).json({
+          error: "approval_target_mismatch",
+          expected: expectedTarget,
+          actual: approval.target,
+          approval
+        });
+        return;
+      }
+
+      const approvalCommand = normalizeApprovalCommand(approval.command);
+      if (approvalCommand && approvalCommand !== expectedCommand) {
+        response.status(409).json({
+          error: "approval_command_mismatch",
+          expected: expectedCommand,
+          actual: approvalCommand,
+          approval
+        });
+        return;
+      }
+
+      const consumed = await consumeToolApproval({
+        approvalId: approval.id,
+        consumedBy: "mcp.resources/list"
+      });
+      if (!consumed.changed || !consumed.approval) {
+        response.status(409).json({
+          error: "approval_not_consumable",
+          reason: consumed.reason,
+          approval: consumed.approval
+        });
+        return;
+      }
+
+      const result = await runMcpResourcesList({
+        server,
+        cursor: input.cursor,
+        timeoutMs: input.timeoutMs,
+        maxOutputBytes: input.maxOutputBytes
+      });
+      const patched = await patchMcpServer(server.id, {
+        status: "available",
+        lastCheckedAt: new Date().toISOString(),
+        lastError: null,
+        config: {
+          ...server.config,
+          lastResourcesList: mcpDiscoveryConfigEntry(result.result)
+        }
+      });
+
+      await appendJobEvent(
+        approval.jobId,
+        "tool.mcp_resources_list_completed",
+        {
+          approvalId: approval.id,
+          serverId: server.id,
+          serverName: server.name,
+          resultPreview: previewJson(result.result),
+          stderrPreview: result.stderr.slice(0, 4000),
+          durationMs: result.durationMs
+        },
+        {
+          actor: "mcp.resources/list",
+          stageId: approval.stageId
+        }
+      );
+
+      response.json({
+        approval: consumed.approval,
+        server: patched,
+        list: result
       });
     } catch (error) {
       next(error);

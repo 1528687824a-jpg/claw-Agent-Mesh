@@ -281,7 +281,7 @@ const capabilities: RuntimeCapability[] = [
     id: "skills_mcp",
     title: "Skills and MCP registry",
     status: "partial",
-    summary: "Skills and MCP servers can be persisted, toggled, command-checked, and called through a minimal approval-gated stdio MCP tools/call proxy.",
+    summary: "Skills and MCP servers can be persisted, toggled, command-checked, listed, resource-listed, and called through minimal approval-gated stdio MCP proxies.",
     routes: [
       "GET /skills",
       "POST /skills",
@@ -290,6 +290,8 @@ const capabilities: RuntimeCapability[] = [
       "POST /mcp-servers",
       "PATCH /mcp-servers/:serverId",
       "POST /mcp-servers/:serverId/check",
+      "POST /mcp-servers/:serverId/tools/list",
+      "POST /mcp-servers/:serverId/resources/list",
       "POST /mcp-servers/:serverId/tools/call"
     ],
     implemented: [
@@ -298,16 +300,17 @@ const capabilities: RuntimeCapability[] = [
       "Enable/disable state",
       "MCP command availability diagnostics",
       "Approval-gated MCP stdio initialize + tools/call proxy",
+      "Approval-gated MCP tools/list and resources/list discovery",
+      "MCP discovery results cached into server config for UI use",
       "MCP timeout and output caps",
       "MCP call audit events"
     ],
     missing: [
       "Long-lived MCP sessions",
-      "MCP tools/list and resource APIs",
       "Per-agent MCP access policy enforcement"
     ],
     nextActions: [
-      "Add MCP tools/list, long-lived sessions, and per-agent policy"
+      "Add MCP long-lived sessions and per-agent policy"
     ]
   },
   {
@@ -428,7 +431,7 @@ export function getRuntimeCapabilities(): RuntimeCapabilitiesResponse {
     summary,
     capabilities,
     recommendedNext: [
-      "Approval-gated search/browser tool calls and MCP session reuse",
+      "Approval-gated search/browser tool calls, MCP session reuse, and per-agent MCP policy",
       "Schedule configuration UI",
       "Packaged OpenClaw launch/restart command defaults and real E2E regression"
     ]
