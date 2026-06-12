@@ -185,6 +185,9 @@ changes land.
    - Backend provider registry now exists through `/providers`.
    - API keys are saved through a local-only secret boundary; responses only
      expose configured/fingerprint status.
+   - Provider responses now reconcile database key flags with live local secret
+     storage, so stale `apiKeyConfigured=true` records stop showing as
+     configured after their secret file is missing or unreadable.
    - `/providers/verify-batch` verifies multiple OpenAI-compatible providers
      at once, records latency/status in `provider.metadata.verification`, and
      keeps pricing metadata intact.
@@ -313,9 +316,9 @@ changes land.
    - Store provider name, base URL template, model, key configured flag, and
      verification status.
    - Keep API keys local-only and redacted.
-   - Status: partial done. Registry, local-only key status, verification, shared
-     Docker secret volume, and worker routing now exist; native OpenClaw
-     provider config writing is still missing.
+   - Status: partial done. Registry, live local-only key status, verification,
+     shared Docker secret volume, native redacted config writing, and worker
+     routing now exist; real OpenClaw provider E2E validation is still missing.
 
 4. Add agent registry.
    - Store panel supervisor and child agents.

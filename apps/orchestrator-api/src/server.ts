@@ -131,6 +131,7 @@ import {
   TOOL_APPROVAL_STATUSES,
   TOOL_RISK_LEVELS,
   type ExperienceStatus,
+  type ModelProviderRecord,
   type ToolApprovalRecord
 } from "../../../packages/shared/src/types";
 import { launchDbos, startJobWorkflow } from "../../dbos-worker/src/dbos-runtime";
@@ -784,6 +785,30 @@ function providerVerificationFailure(message: string): ProviderVerificationResul
   };
 }
 
+async function withLiveProviderSecretStatus(provider: ModelProviderRecord): Promise<ModelProviderRecord> {
+  const keyStatus = await getProviderApiKeyStatus(provider.id);
+  if (
+    provider.apiKeyConfigured === keyStatus.configured &&
+    provider.apiKeyFingerprint === keyStatus.fingerprint
+  ) {
+    return provider;
+  }
+
+  const patched = await patchModelProvider(provider.id, {
+    apiKeyConfigured: keyStatus.configured,
+    apiKeyFingerprint: keyStatus.fingerprint,
+    verificationStatus: keyStatus.configured ? provider.verificationStatus : "unknown",
+    lastError: keyStatus.configured ? provider.lastError : "provider_api_key_missing_in_secret_storage"
+  });
+  return patched ?? {
+    ...provider,
+    apiKeyConfigured: keyStatus.configured,
+    apiKeyFingerprint: keyStatus.fingerprint,
+    verificationStatus: keyStatus.configured ? provider.verificationStatus : "unknown",
+    lastError: keyStatus.configured ? provider.lastError : "provider_api_key_missing_in_secret_storage"
+  };
+}
+
 type ProviderVerificationRequest = {
   providerId: string;
   apiKey?: string;
@@ -1109,7 +1134,8 @@ async function main() {
 
   app.get("/providers", async (_request, response, next) => {
     try {
-      response.json({ providers: await listModelProviders() });
+      const providers = await Promise.all((await listModelProviders()).map(withLiveProviderSecretStatus));
+      response.json({ providers });
     } catch (error) {
       next(error);
     }
@@ -1178,10 +1204,10 @@ async function main() {
         displayName: input.displayName,
         baseUrl: input.baseUrl,
         defaultModel: input.defaultModel,
-        apiKeyConfigured: input.apiKey ? true : keyStatus.configured || current.apiKeyConfigured,
+        apiKeyConfigured: input.apiKey ? true : keyStatus.configured,
         apiKeyFingerprint: input.apiKey
           ? fingerprintSecret(input.apiKey)
-          : keyStatus.fingerprint ?? current.apiKeyFingerprint,
+          : keyStatus.fingerprint,
         verificationStatus: input.verificationStatus,
         lastError: input.lastError,
         metadata: input.metadata
@@ -1204,8 +1230,8 @@ async function main() {
 
       const results = await Promise.all(
         requestedProviders.map(async (requestedProvider) => {
-          const provider = await getModelProvider(requestedProvider.providerId);
-          if (!provider) {
+          const currentProvider = await getModelProvider(requestedProvider.providerId);
+          if (!currentProvider) {
             return {
               providerId: requestedProvider.providerId,
               provider: null,
@@ -1214,6 +1240,9 @@ async function main() {
             };
           }
 
+          const provider = requestedProvider.apiKey
+            ? currentProvider
+            : await withLiveProviderSecretStatus(currentProvider);
           if (requestedProvider.apiKey) {
             await saveProviderApiKey(provider.id, requestedProvider.apiKey);
           }
@@ -1230,10 +1259,10 @@ async function main() {
               })
               : providerVerificationFailure("provider_api_key_and_model_required_for_verify");
           const patched = await patchModelProvider(provider.id, {
-            apiKeyConfigured: Boolean(apiKey) || provider.apiKeyConfigured,
+            apiKeyConfigured: Boolean(apiKey),
             apiKeyFingerprint: apiKey
               ? fingerprintSecret(apiKey)
-              : provider.apiKeyFingerprint,
+              : null,
             verificationStatus: verification.status,
             lastVerifiedAt: verification.checkedAt,
             lastError: verification.message,
@@ -1269,7 +1298,8 @@ async function main() {
         return;
       }
       const input = verifyProviderSchema.parse(request.body ?? {});
-      const apiKey = input.apiKey ?? await readProviderApiKey(provider.id);
+      const currentProvider = input.apiKey ? provider : await withLiveProviderSecretStatus(provider);
+      const apiKey = input.apiKey ?? await readProviderApiKey(currentProvider.id);
       const model = input.model ?? provider.defaultModel;
       if (!apiKey || !model) {
         response.status(400).json({ error: "provider_api_key_and_model_required_for_verify" });

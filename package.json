@@ -33,6 +33,7 @@
     "smoke:secret-storage": "tsx scripts/smoke-secret-storage.ts",
     "smoke:runtime-usage-cost": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-runtime-usage-cost.ps1",
     "smoke:provider-batch-verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-provider-batch-verify.ps1",
+    "smoke:provider-secret-status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-provider-secret-status.ps1",
     "smoke:web-search-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-web-search-browser.ps1",
     "smoke:list-jobs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-list-jobs.ps1",
     "smoke:experience-memory": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-with-smoke-lock.ps1 dev-stack scripts/smoke-experience-memory.ps1",

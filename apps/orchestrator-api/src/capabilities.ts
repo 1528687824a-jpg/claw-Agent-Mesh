@@ -264,7 +264,7 @@ const capabilities: RuntimeCapability[] = [
     id: "provider_registry",
     title: "Model/provider configuration center",
     status: "partial",
-    summary: "Backend provider registry, local-only key status, OpenAI-compatible verification with latency metadata, shared Docker secret volume, and worker provider routing/failover are available.",
+    summary: "Backend provider registry, live local-only key status, OpenAI-compatible verification with latency metadata, shared Docker secret volume, and worker provider routing/failover are available.",
     routes: [
       "GET /providers",
       "POST /providers",
@@ -278,6 +278,7 @@ const capabilities: RuntimeCapability[] = [
       "Durable provider registry",
       "Local-only provider key storage boundary",
       "Redacted key configured/fingerprint status",
+      "Provider API responses reconcile stale database key flags with live secret storage",
       "OpenAI-compatible provider verification endpoint",
       "Batch provider verification endpoint with latency recorded in provider metadata",
       "API and worker share provider secrets through a Docker secret volume",

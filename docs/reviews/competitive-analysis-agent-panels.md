@@ -85,3 +85,9 @@
 - Phase 18 per-agent network policy is now implemented for web fetch, web search, and browser snapshot. Agent metadata can allow/deny operations, require explicit private-network permission, and restrict protocols or hosts with allow/block lists.
 - Verification added: `tests/network-policy.test.ts` covers policy defaults, disabled operations, private-network checks, host allow/block matching, and disabled agents; the web-search/browser smoke now creates policy-scoped agents and verifies both allowed access and a real `network_policy_denied` response without consuming the approval.
 - Remaining Phase 18 work after this slice: richer interactive browser automation only. Real provider E2E against an installed OpenClaw runtime remains the next Phase 19 regression target.
+
+## 2026-06-12 Update 6
+
+- Provider key status is now reconciled against live local secret storage before `/providers` responses and verification paths. This prevents stale database rows from showing `apiKeyConfigured=true` when the local secret file is missing or unreadable.
+- Verification added: `npm run smoke:provider-secret-status` creates a temporary provider, deletes only its temporary secret file, restarts the API, and verifies `/providers` reports the provider as unconfigured with `provider_api_key_missing_in_secret_storage`.
+- Product implication: the panel should stop showing a fake configured/online state when the saved key is not actually available locally.
