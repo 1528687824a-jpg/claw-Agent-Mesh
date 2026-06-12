@@ -55,7 +55,9 @@ npm run dev:start | Out-Host
 $actionsResponse = Invoke-RestMethod -Uri "$apiBaseUrl/runtime/repair/actions" -Headers $apiHeaders
 $actionIds = @($actionsResponse.actions | ForEach-Object { $_.id })
 foreach ($expected in @(
+  "database.migrate",
   "providers.reconcileSecrets",
+  "mcp.checkAll",
   "openclaw.runtime.start",
   "openclaw.runtime.restart",
   "agents.seedDefaults",
@@ -99,6 +101,33 @@ $reconcile = Invoke-Repair -Body @{
 Assert-Equal -Actual $reconcile.ok -Expected $true -Message "provider reconcile ok"
 Assert-True -Condition (@($reconcile.details.changedProviders | Where-Object { $_.id -eq $providerId }).Count -eq 1) -Message "stale provider should be reconciled"
 
+$databaseRepair = Invoke-Repair -Body @{
+  action = "database.migrate"
+}
+Assert-Equal -Actual $databaseRepair.ok -Expected $true -Message "database migrate repair ok"
+Assert-True -Condition ([int]$databaseRepair.details.durationMs -ge 0) -Message "database migrate repair duration missing"
+
+$mcpServerId = "repair-mcp-missing-$suffix"
+Invoke-RestMethod `
+  -Uri "$apiBaseUrl/mcp-servers" `
+  -Method Post `
+  -Headers $apiHeaders `
+  -ContentType "application/json" `
+  -Body (@{
+    id = $mcpServerId
+    name = "Repair Missing MCP"
+    command = "definitely-missing-mcp-$suffix"
+    enabled = $true
+  } | ConvertTo-Json -Depth 6) | Out-Null
+
+$mcpRepair = Invoke-Repair -Body @{
+  action = "mcp.checkAll"
+}
+Assert-Equal -Actual $mcpRepair.ok -Expected $true -Message "mcp check repair ok"
+$mcpChecked = @($mcpRepair.details.checked | Where-Object { $_.id -eq $mcpServerId })[0]
+Assert-True -Condition ([bool]$mcpChecked) -Message "mcp check repair should include temporary server"
+Assert-Equal -Actual $mcpChecked.status -Expected "missing" -Message "mcp check repair should mark missing command"
+
 $runtimeRoot = Join-Path $root ".runtime\repair-actions-openclaw-$suffix"
 $runtimeStart = Invoke-Repair -Body @{
   action = "openclaw.runtime.start"
@@ -134,6 +163,8 @@ Assert-True -Condition (Test-Path -LiteralPath (Join-Path $runtimeRoot "agent-mo
   checks = @(
     "repair_actions_catalog",
     "repair_reconciles_provider_secret_status",
+    "repair_runs_database_migrations",
+    "repair_checks_mcp_commands",
     "repair_prepares_openclaw_runtime",
     "repair_seeds_default_agents",
     "repair_applies_openclaw_sync"

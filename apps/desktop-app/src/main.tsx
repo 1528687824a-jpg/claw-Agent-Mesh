@@ -259,9 +259,17 @@ const supervisorPermissionKeys: SupervisorPermissionKey[] = [
 
 const runtimeRepairActionLabels: Record<Language, Record<RuntimeRepairActionId, { title: string; description: string }>> = {
   en: {
+    "database.migrate": {
+      title: "Run migrations",
+      description: "Apply safe Honeycomb database migrations."
+    },
     "providers.reconcileSecrets": {
       title: "Sync key status",
       description: "Fix stale provider key flags from local secret storage."
+    },
+    "mcp.checkAll": {
+      title: "Check MCP",
+      description: "Re-check enabled MCP server commands and update status."
     },
     "openclaw.runtime.start": {
       title: "Prepare runtime",
@@ -281,9 +289,17 @@ const runtimeRepairActionLabels: Record<Language, Record<RuntimeRepairActionId, 
     }
   },
   zh: {
+    "database.migrate": {
+      title: "运行数据库迁移",
+      description: "执行安全的 Honeycomb 数据库迁移。"
+    },
     "providers.reconcileSecrets": {
       title: "同步 Key 状态",
       description: "根据本地密钥存储修正模型服务商的 Key 状态。"
+    },
+    "mcp.checkAll": {
+      title: "检查 MCP",
+      description: "重新检测已启用 MCP 服务命令并更新状态。"
     },
     "openclaw.runtime.start": {
       title: "准备运行时",

@@ -111,3 +111,10 @@
 - Repair result handling is wired through the desktop API client, including HTTP 409 repair-result payloads so blocked/failed repair actions show the backend summary instead of a generic network failure.
 - Verification added to `npm run smoke:desktop-ui`: the smoke waits for the repair card, clicks the low-risk provider secret reconciliation action, and asserts that a real `/runtime/repair` request was sent and rendered.
 - Remaining repair work: targeted WSL/Docker/database/MCP repair actions and cross-platform installer validation.
+
+## 2026-06-12 Update 10
+
+- Runtime repair actions now include two targeted diagnostics repairs: `database.migrate` runs the idempotent Honeycomb migration set without closing the API pool, and `mcp.checkAll` re-checks enabled MCP server commands and updates registry status.
+- The database migration module now exports `runMigrations()` while preserving command-line behavior for `npm run db:migrate`.
+- Verification expanded in `npm run smoke:runtime-repair-actions`: it now expects seven repair actions, runs database migration repair, creates a temporary missing MCP server command, and verifies `mcp.checkAll` marks it missing.
+- Remaining repair work: safe WSL/Docker checks and repair actions, plus cross-platform installer validation.

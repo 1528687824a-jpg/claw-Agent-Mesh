@@ -271,11 +271,12 @@ changes land.
      not count localhost/example fake providers as live external providers.
    - Runtime repair API now exposes a repair action catalog and can reconcile
      provider secret state, prepare/restart the builtin OpenClaw runtime, seed
-     default agents, and apply OpenClaw sync.
+     default agents, apply OpenClaw sync, run idempotent database migrations,
+     and re-check enabled MCP server commands.
    - Desktop supervisor workbench now includes a diagnostics repair card that
      lists backend repair actions and can execute them from the panel.
-   - Full installer readiness, Docker/WSL checks, and MCP/database repair
-     actions still need deeper work.
+   - Full installer readiness and safe Docker/WSL repair actions still need
+     deeper work.
 
 10. Security hardening from `HONEYC~2.MD`
    - S1 API bearer token and local-only Docker/Postgres port publishing are
@@ -405,9 +406,9 @@ changes land.
       secret-state reconciliation is included, and real-provider E2E readiness
       is explicit. First repair actions now exist for provider secret
       reconciliation, OpenClaw runtime control, default agent seeding, and
-      OpenClaw sync apply. Desktop workbench can list and execute repair
-      actions; deeper WSL/Docker/database/MCP repairs still need
-      implementation.
+      OpenClaw sync apply. Database migration and MCP command re-check repair
+      actions also exist. Desktop workbench can list and execute repair
+      actions; deeper safe WSL/Docker repairs still need implementation.
 
 ## Current Next Step
 

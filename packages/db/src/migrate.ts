@@ -412,17 +412,22 @@ const statements = [
     where agent_config_id is not null`
 ];
 
-async function main() {
+export async function runMigrations() {
   for (const statement of statements) {
     await pool.query(statement);
   }
+}
 
+async function main() {
+  await runMigrations();
   console.log("Database migration complete");
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(closePool);
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    })
+    .finally(closePool);
+}

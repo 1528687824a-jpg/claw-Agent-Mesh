@@ -371,7 +371,9 @@ export type RuntimeDiagnosticsResponse = {
 };
 
 export type RuntimeRepairActionId =
+  | "database.migrate"
   | "providers.reconcileSecrets"
+  | "mcp.checkAll"
   | "openclaw.runtime.start"
   | "openclaw.runtime.restart"
   | "agents.seedDefaults"

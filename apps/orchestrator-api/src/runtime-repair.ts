@@ -4,9 +4,16 @@ import {
   patchAgentConfig,
   seedDefaultAgentConfigs
 } from "../../../packages/db/src/config-registry";
+import { runMigrations } from "../../../packages/db/src/migrate";
+import {
+  listMcpServers,
+  patchMcpServer
+} from "../../../packages/db/src/tool-registry";
 import {
   getProviderApiKeyStatus
 } from "../../../packages/runtime/src/local-secrets";
+import { checkMcpCommand } from "./mcp-diagnostics";
+import { invalidateMcpSession } from "./mcp-sessions";
 import {
   applyOpenClawSyncPlan,
   OpenClawSyncSafetyError
@@ -21,7 +28,9 @@ import {
 } from "./provider-secret-status";
 
 export const RUNTIME_REPAIR_ACTION_IDS = [
+  "database.migrate",
   "providers.reconcileSecrets",
+  "mcp.checkAll",
   "openclaw.runtime.start",
   "openclaw.runtime.restart",
   "agents.seedDefaults",
@@ -60,9 +69,23 @@ export type RuntimeRepairResult = {
 export function listRuntimeRepairActions(): RuntimeRepairAction[] {
   return [
     {
+      id: "database.migrate",
+      title: "Run database migrations",
+      description: "Run the idempotent Honeycomb database migration set against the configured database.",
+      riskLevel: "medium",
+      inputs: []
+    },
+    {
       id: "providers.reconcileSecrets",
       title: "Reconcile provider secret status",
       description: "Refresh provider apiKeyConfigured/fingerprint state from local secret storage.",
+      riskLevel: "low",
+      inputs: []
+    },
+    {
+      id: "mcp.checkAll",
+      title: "Check MCP command availability",
+      description: "Re-run command availability checks for enabled MCP servers and update their registry status.",
       riskLevel: "low",
       inputs: []
     },
@@ -104,6 +127,20 @@ function result(input: Omit<RuntimeRepairResult, "ranAt">): RuntimeRepairResult 
   };
 }
 
+async function repairDatabaseMigrate(action: RuntimeRepairActionId): Promise<RuntimeRepairResult> {
+  const startedAt = Date.now();
+  await runMigrations();
+  return result({
+    action,
+    ok: true,
+    changed: true,
+    summary: "Database migrations completed.",
+    details: {
+      durationMs: Date.now() - startedAt
+    }
+  });
+}
+
 async function repairProviderSecrets(action: RuntimeRepairActionId): Promise<RuntimeRepairResult> {
   const before = await listModelProviders();
   const after = await withLiveProviderSecretStatuses(before);
@@ -142,6 +179,61 @@ async function repairProviderSecrets(action: RuntimeRepairActionId): Promise<Run
         .filter((provider) => provider.lastError === PROVIDER_SECRET_MISSING_ERROR)
         .map((provider) => ({ id: provider.id, displayName: provider.displayName })),
       changedProviders
+    }
+  });
+}
+
+async function repairMcpCheckAll(action: RuntimeRepairActionId): Promise<RuntimeRepairResult> {
+  const servers = await listMcpServers();
+  const enabledServers = servers.filter((server) => server.enabled);
+  const checked = await Promise.all(
+    enabledServers.map(async (server) => {
+      const check = await checkMcpCommand(server.command);
+      const patched = await patchMcpServer(server.id, {
+        status: check.status,
+        lastCheckedAt: check.checkedAt,
+        lastError: check.error,
+        config: {
+          ...server.config,
+          lastCommandCheck: {
+            resolvedPath: check.resolvedPath
+          }
+        }
+      });
+      if (check.status !== "available") {
+        invalidateMcpSession(server.id);
+      }
+      return {
+        id: server.id,
+        name: server.name,
+        command: server.command,
+        previousStatus: server.status,
+        status: check.status,
+        lastError: check.error,
+        resolvedPath: check.resolvedPath,
+        updated: Boolean(patched)
+      };
+    })
+  );
+  const unavailable = checked.filter((server) => server.status !== "available");
+  return result({
+    action,
+    ok: true,
+    changed: checked.some((server) => server.previousStatus !== server.status),
+    summary:
+      unavailable.length > 0
+        ? `Checked ${checked.length} MCP server(s); ${unavailable.length} unavailable.`
+        : `Checked ${checked.length} MCP server(s); all enabled MCP commands are available.`,
+    details: {
+      totalServers: servers.length,
+      enabledServers: enabledServers.length,
+      unavailableServers: unavailable.map((server) => ({
+        id: server.id,
+        name: server.name,
+        status: server.status,
+        lastError: server.lastError
+      })),
+      checked
     }
   });
 }
@@ -267,8 +359,12 @@ async function repairOpenClawSyncApply(input: RuntimeRepairInput): Promise<Runti
 
 export async function runRuntimeRepairAction(input: RuntimeRepairInput): Promise<RuntimeRepairResult> {
   switch (input.action) {
+    case "database.migrate":
+      return repairDatabaseMigrate(input.action);
     case "providers.reconcileSecrets":
       return repairProviderSecrets(input.action);
+    case "mcp.checkAll":
+      return repairMcpCheckAll(input.action);
     case "openclaw.runtime.start":
       return repairOpenClawRuntime(input.action, "start", input);
     case "openclaw.runtime.restart":
