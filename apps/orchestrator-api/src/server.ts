@@ -320,7 +320,7 @@ const seedDefaultAgentsSchema = z.object({
 
 const agentModelConfigSchema = z.object({
   model: z.string().trim().min(1).max(300),
-  apiKey: z.string().min(1).max(10000),
+  apiKey: z.string().min(1).max(10000).optional(),
   providerId: z.string().trim().min(1).max(160).optional(),
   openClawRootPath: z.string().trim().min(1).max(2000).optional(),
   allowDiscoveredUserRuntime: z.boolean().optional()
@@ -927,7 +927,9 @@ const defaultCorsOrigins = [
   "http://127.0.0.1:5173",
   "http://localhost:5174",
   "http://127.0.0.1:5174",
-  "tauri://localhost"
+  "tauri://localhost",
+  "http://tauri.localhost",
+  "https://tauri.localhost"
 ];
 
 function getCorsOrigins() {
@@ -1491,10 +1493,23 @@ async function main() {
         return;
       }
 
+      const providedApiKey = input.apiKey?.trim() ?? "";
+      const storedApiKey = providedApiKey ? "" : await readProviderApiKey(inferredProvider.id);
+      const apiKey = providedApiKey || storedApiKey;
+      if (!apiKey) {
+        response.status(400).json({
+          error: "agent_model_api_key_required",
+          message: "An API key is required before this agent model can be verified.",
+          providerId: inferredProvider.id,
+          model: input.model
+        });
+        return;
+      }
+
       const verification = await verifyOpenAiCompatibleProvider({
         baseUrl: inferredProvider.baseUrl,
         model: input.model,
-        apiKey: input.apiKey
+        apiKey
       });
       if (!verification.ok) {
         const failedProvider = await upsertModelProvider({
@@ -1502,8 +1517,8 @@ async function main() {
           displayName: inferredProvider.displayName,
           baseUrl: inferredProvider.baseUrl,
           defaultModel: input.model,
-          apiKeyConfigured: existingProvider?.apiKeyConfigured ?? false,
-          apiKeyFingerprint: existingProvider?.apiKeyFingerprint ?? null,
+          apiKeyConfigured: existingProvider?.apiKeyConfigured ?? Boolean(storedApiKey),
+          apiKeyFingerprint: existingProvider?.apiKeyFingerprint ?? (storedApiKey ? fingerprintSecret(storedApiKey) : null),
           verificationStatus: verification.status,
           lastVerifiedAt: verification.checkedAt,
           lastError: verification.message,
@@ -1528,7 +1543,9 @@ async function main() {
         return;
       }
 
-      const keyStatus = await saveProviderApiKey(inferredProvider.id, input.apiKey);
+      const keyStatus = providedApiKey
+        ? await saveProviderApiKey(inferredProvider.id, providedApiKey)
+        : await getProviderApiKeyStatus(inferredProvider.id);
       const provider = await upsertModelProvider({
         id: inferredProvider.id,
         displayName: inferredProvider.displayName,

@@ -1287,6 +1287,11 @@ function describeAgentConfigSaveError(error: unknown, language: Language) {
       ? "Honeycomb 后端启动时缺少本地鉴权令牌。请关闭后重新用桌面快捷方式启动，或运行启动脚本重启后端。"
       : "The Honeycomb backend started without the local auth token. Relaunch from the desktop shortcut or restart the backend with the launcher script.";
   }
+  if (payload?.error === "agent_model_api_key_required") {
+    return zh
+      ? "这个 Agent 还没有保存过 API Key。请先输入 API Key，Honeycomb 会真实验证并写入 OpenClaw；之后再次修改模型时可以复用本机保存的 Key。"
+      : "This agent does not have a saved API key yet. Enter an API key once so Honeycomb can verify it and write it to OpenClaw; later edits can reuse the local saved key.";
+  }
   if (payload?.reason === "provider_auth_failed") {
     return (zh ? "API Key 未通过服务商认证，请确认 Key 属于该模型服务商。" : "The API key was rejected by the provider. Confirm the key belongs to this provider.") + detail;
   }
@@ -2978,16 +2983,31 @@ function App() {
 
   function openAgentConfig(agentId: string) {
     const existing = agentModelConfigs[agentId];
+    const isPanelSupervisor = agentId === "panel-supervisor-agent";
     const inheritedApiKey = agentId === "panel-supervisor-agent" ? providerApiKey : "";
-    const model = existing?.model || firstRunPreview?.provider?.model || "";
-    const providerReference = resolveProviderForAgent(model, existing, firstRunPreview);
+    const existingHasUsableKey = Boolean(existing?.apiKey?.trim()) ||
+      existing?.apiKeyConfigured === true;
+    const model = existingHasUsableKey && existing?.model
+      ? existing.model
+      : isPanelSupervisor
+        ? firstRunPreview?.provider?.model || ""
+        : "";
+    const providerReference = resolveProviderForAgent(model, existing, isPanelSupervisor ? firstRunPreview : null);
     setExpandedAgentId((current) => (current === agentId ? "" : agentId));
     setAgentConfigDraft({
-      providerName: existing?.providerName || firstRunPreview?.provider?.providerName || providerReference.providerName,
-      baseUrl: existing?.baseUrl || firstRunPreview?.provider?.baseUrl || providerReference.baseUrl,
+      providerName: existingHasUsableKey && existing?.providerName
+        ? existing.providerName
+        : isPanelSupervisor
+          ? firstRunPreview?.provider?.providerName || providerReference.providerName
+          : providerReference.providerName,
+      baseUrl: existingHasUsableKey && existing?.baseUrl
+        ? existing.baseUrl
+        : isPanelSupervisor
+          ? firstRunPreview?.provider?.baseUrl || providerReference.baseUrl
+          : providerReference.baseUrl,
       model,
       apiKey: existing?.apiKey || inheritedApiKey,
-      apiKeyConfigured: existing?.apiKeyConfigured === true || Boolean(existing?.apiKey || inheritedApiKey)
+      apiKeyConfigured: existingHasUsableKey || Boolean(inheritedApiKey)
     });
     setShowAgentApiKey(false);
     setAgentConfigMessage("");
@@ -3006,9 +3026,10 @@ function App() {
     setAgentConfigMessage(copy.agentConfigSaving);
     const existing = agentModelConfigs[agentId];
     const inheritedApiKey = agentId === "panel-supervisor-agent" ? providerApiKey : "";
+    const hasSavedApiKey = existing?.apiKeyConfigured === true || Boolean(existing?.apiKey?.trim());
     const apiKey = agentConfigDraft.apiKey.trim() || existing?.apiKey?.trim() || inheritedApiKey;
     const model = agentConfigDraft.model.trim();
-    if (!model || !apiKey) {
+    if (!model || (!apiKey && !hasSavedApiKey)) {
       setAgentConfigMessage("");
       setAgentConfigError(copy.agentConfigMissing);
       return;
@@ -3017,7 +3038,7 @@ function App() {
     try {
       const backendResult = await saveBackendAgentModelConfig(agentId, {
         model,
-        apiKey,
+        ...(apiKey ? { apiKey } : {}),
         allowDiscoveredUserRuntime: true
       });
       const verifiedAt = new Date().toISOString();
@@ -3037,11 +3058,13 @@ function App() {
       saveAgentModelConfigs(nextConfigs);
       setAgentModelConfigs(nextConfigs);
       setAgentConfigDraft(savedConfig);
-      if (agentId === "panel-supervisor-agent") {
+      if (agentId === "panel-supervisor-agent" && apiKey) {
         void invokeDesktopCommand("save_provider_api_key", { payload: apiKey });
         setProviderApiKey(apiKey);
       }
-      void saveAgentModelConfigToDesktop(agentId, savedConfig);
+      if (apiKey) {
+        void saveAgentModelConfigToDesktop(agentId, savedConfig);
+      }
       setAgentConfigMessage(
         backendResult.openclawSync.ok
           ? copy.agentConfigSaved
@@ -3119,14 +3142,13 @@ function App() {
         <div className="agentGrid">
           {agents.map((agent) => {
             const savedConfig = agentModelConfigs[agent.id];
-            const savedHasKey = Boolean(savedConfig?.apiKey?.trim());
+            const savedConfigured = savedConfig?.apiKeyConfigured === true || Boolean(savedConfig?.apiKey?.trim());
             const providerKeyConfigured = agent.id === "panel-supervisor-agent" &&
-              firstRunPreview?.provider?.apiKeyConfigured === true &&
-              Boolean(providerApiKey.trim());
+              firstRunPreview?.provider?.apiKeyConfigured === true;
             const configured = agent.id === "panel-supervisor-agent"
-              ? savedHasKey || providerKeyConfigured
-              : savedHasKey;
-            const modelTag = savedHasKey
+              ? savedConfigured || providerKeyConfigured
+              : savedConfigured;
+            const modelTag = savedConfigured
               ? [savedConfig.providerName, savedConfig.model].filter(Boolean).join(" · ")
               : agent.modelTag;
             const expanded = expandedAgentId === agent.id;

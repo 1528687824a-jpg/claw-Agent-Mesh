@@ -761,7 +761,7 @@ async function runOnboardingFlow(page: CdpClient) {
         !providerLabelText.includes("模型服务商") &&
         !providerLabelText.includes("接口地址");
       const providerInputHeight = document.querySelector(".providerFocus input")?.getBoundingClientRect().height ?? 0;
-      const modelPlaceholderVisible = document.querySelector(".providerFocus input")?.placeholder === "例如：deepseek-v4-pro" &&
+      const modelPlaceholderVisible = document.querySelector(".providerFocus input")?.placeholder === "例如：deepseek-chat" &&
         document.querySelector(".providerFocus input")?.value === "";
       const supervisorControlsCompact = supervisorInputHeight <= providerInputHeight + 4 &&
         supervisorNextHeight <= providerInputHeight + 4;
@@ -782,7 +782,7 @@ async function runOnboardingFlow(page: CdpClient) {
       const apiKeyHiddenAfterToggle = document.querySelector(".providerFocus .apiKeyInputShell input")?.type === "password";
       const apiKey = document.querySelector(".providerFocus .apiKeyInputShell input");
       setNativeValue(apiKey, "smoke-private-key");
-      setNativeValue(document.querySelector(".providerFocus input"), "deepseek-v4-pro");
+      setNativeValue(document.querySelector(".providerFocus input"), "deepseek-chat");
       document.querySelector(".providerFocus .setupPrimary").click();
 
       await waitFor(() => document.querySelector(".interviewStage"), "interview did not appear");

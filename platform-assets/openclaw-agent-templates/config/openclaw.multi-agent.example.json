@@ -10,48 +10,30 @@
       {
         "id": "research-agent",
         "workspace": "openclaw-work/research",
-        "agentDir": "openclaw-agents/research",
-        "model": {
-          "primary": "deepseek-research/deepseek-v4-pro"
-        }
+        "agentDir": "openclaw-agents/research"
       },
       {
         "id": "writer-agent",
         "workspace": "openclaw-work/writer",
-        "agentDir": "openclaw-agents/writer",
-        "model": {
-          "primary": "deepseek-writer/deepseek-v4-pro"
-        }
+        "agentDir": "openclaw-agents/writer"
       },
       {
         "id": "image-agent",
         "workspace": "openclaw-work/image",
-        "agentDir": "openclaw-agents/image",
-        "model": {
-          "primary": "deepseek-writer/deepseek-v4-pro"
-        }
+        "agentDir": "openclaw-agents/image"
       },
       {
         "id": "video-agent",
         "workspace": "openclaw-work/video",
-        "agentDir": "openclaw-agents/video",
-        "model": {
-          "primary": "deepseek-writer/deepseek-v4-pro"
-        }
+        "agentDir": "openclaw-agents/video"
       },
       {
         "id": "test-agent",
         "workspace": "openclaw-work/test",
-        "agentDir": "openclaw-agents/test",
-        "model": {
-          "primary": "zai/glm-5.1"
-        }
+        "agentDir": "openclaw-agents/test"
       }
     ],
     "defaults": {
-      "model": {
-        "primary": "deepseek/deepseek-v4-flash"
-      },
       "imageGenerationModel": {
         "primary": "openai/doubao-seedream-5-0-260128",
         "timeoutMs": 600000

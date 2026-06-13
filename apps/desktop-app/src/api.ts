@@ -615,7 +615,7 @@ export type SeedDefaultAgentsInput = {
 
 export type AgentModelConfigInput = {
   model: string;
-  apiKey: string;
+  apiKey?: string;
   providerId?: string;
   openClawRootPath?: string;
   allowDiscoveredUserRuntime?: boolean;

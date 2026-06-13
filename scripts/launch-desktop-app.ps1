@@ -10,6 +10,7 @@ $dockerCli = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
 $dockerDesktop = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 $desktopExe = Join-Path $root "apps\desktop-app\src-tauri\target\release\honeycomb.exe"
 $logPath = Join-Path $root "logs\desktop-launcher.log"
+$backendBuildStampPath = Join-Path $root ".runtime\backend-launcher-build.stamp"
 $honeycombRuntimeHostDir = Join-Path ([Environment]::GetFolderPath("ApplicationData")) "io.agentopenclaw.desktop\openclaw-runtime"
 $honeycombSecretHostDir = Join-Path ([Environment]::GetFolderPath("ApplicationData")) "io.agentopenclaw.desktop\honeycomb-secrets"
 $dockerProbeTimeoutSeconds = 10
@@ -238,6 +239,58 @@ function Test-DesktopExeNeedsBuild {
   return $sourceWriteTime -gt $exeWriteTime
 }
 
+function Get-LatestBackendSourceWriteTimeUtc {
+  $sourcePaths = @(
+    "Dockerfile.api",
+    "Dockerfile.worker",
+    "docker-compose.yml",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    "apps\orchestrator-api\src",
+    "apps\dbos-worker\src",
+    "packages",
+    "platform-assets\openclaw-agent-templates"
+  )
+
+  $latest = [datetime]::MinValue
+  foreach ($relativePath in $sourcePaths) {
+    $path = Join-Path $root $relativePath
+    if (-not (Test-Path -LiteralPath $path)) {
+      continue
+    }
+
+    $item = Get-Item -LiteralPath $path
+    if ($item.PSIsContainer) {
+      $children = Get-ChildItem -LiteralPath $path -Recurse -File -ErrorAction SilentlyContinue
+      foreach ($child in $children) {
+        if ($child.LastWriteTimeUtc -gt $latest) {
+          $latest = $child.LastWriteTimeUtc
+        }
+      }
+    } elseif ($item.LastWriteTimeUtc -gt $latest) {
+      $latest = $item.LastWriteTimeUtc
+    }
+  }
+
+  return $latest
+}
+
+function Test-BackendStackNeedsBuild {
+  if (-not (Test-Path -LiteralPath $backendBuildStampPath)) {
+    return $true
+  }
+
+  $stampWriteTime = (Get-Item -LiteralPath $backendBuildStampPath).LastWriteTimeUtc
+  $sourceWriteTime = Get-LatestBackendSourceWriteTimeUtc
+  return $sourceWriteTime -gt $stampWriteTime
+}
+
+function Update-BackendBuildStamp {
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $backendBuildStampPath) | Out-Null
+  Set-Content -LiteralPath $backendBuildStampPath -Value ((Get-Date).ToUniversalTime().ToString("o")) -Encoding ASCII
+}
+
 function Get-NpmCli {
   $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
   if (-not $npmCommand) {
@@ -366,8 +419,9 @@ try {
     $dockerCli = $dockerCommand.Source
   }
 
-  if ((Test-HttpReady $apiHealthUrl) -and (Test-AuthenticatedApiReady)) {
-    Write-LaunchLog "API already healthy and authenticated; skipping Docker Compose startup"
+  $backendNeedsBuild = Test-BackendStackNeedsBuild
+  if ((Test-HttpReady $apiHealthUrl) -and (Test-AuthenticatedApiReady) -and -not $backendNeedsBuild) {
+    Write-LaunchLog "API already healthy and authenticated, and backend images are up to date; skipping Docker Compose startup"
   } else {
     $dockerReadyDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $initialProbeTimeoutSeconds = [Math]::Min($dockerProbeTimeoutSeconds, [Math]::Max(1, $TimeoutSeconds))
@@ -384,8 +438,13 @@ try {
       throw "Docker daemon did not become ready within $TimeoutSeconds seconds"
     }
 
-    Write-LaunchLog "Starting backend stack with image rebuild"
+    if ($backendNeedsBuild) {
+      Write-LaunchLog "Backend source missing build stamp or newer than stamp; rebuilding backend stack"
+    } else {
+      Write-LaunchLog "Starting backend stack with image rebuild"
+    }
     Invoke-ProcessWithTimeout -FilePath $dockerCli -ArgumentList @("compose", "up", "-d", "--build") -TimeoutSeconds $dockerBuildTimeoutSeconds | Out-Null
+    Update-BackendBuildStamp
   }
 
   $apiReady = Wait-ForCondition -Condition { (Test-HttpReady $apiHealthUrl) -and (Test-AuthenticatedApiReady) } -TimeoutSeconds $TimeoutSeconds -SleepSeconds 1
