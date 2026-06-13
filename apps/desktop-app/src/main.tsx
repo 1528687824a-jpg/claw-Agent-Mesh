@@ -1282,6 +1282,11 @@ function describeAgentConfigSaveError(error: unknown, language: Language) {
       ? "无法只根据这个模型名识别模型服务商。请使用明确的模型名，例如 deepseek-chat、gpt-4o、qwen-plus，或稍后在服务商预设中补充接口。"
       : "Honeycomb could not infer the provider from this model name. Use a recognizable model name such as deepseek-chat, gpt-4o, or qwen-plus, or add a provider preset later.";
   }
+  if (payload?.error === "api_token_not_configured") {
+    return zh
+      ? "Honeycomb 后端启动时缺少本地鉴权令牌。请关闭后重新用桌面快捷方式启动，或运行启动脚本重启后端。"
+      : "The Honeycomb backend started without the local auth token. Relaunch from the desktop shortcut or restart the backend with the launcher script.";
+  }
   if (payload?.reason === "provider_auth_failed") {
     return (zh ? "API Key 未通过服务商认证，请确认 Key 属于该模型服务商。" : "The API key was rejected by the provider. Confirm the key belongs to this provider.") + detail;
   }

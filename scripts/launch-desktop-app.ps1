@@ -14,8 +14,10 @@ $honeycombRuntimeHostDir = Join-Path ([Environment]::GetFolderPath("ApplicationD
 $honeycombSecretHostDir = Join-Path ([Environment]::GetFolderPath("ApplicationData")) "io.agentopenclaw.desktop\honeycomb-secrets"
 $dockerProbeTimeoutSeconds = 10
 $dockerCommandTimeoutSeconds = 90
+$dockerBuildTimeoutSeconds = 600
 $desktopBuildTimeoutSeconds = 600
 $apiHealthUrl = "http://127.0.0.1:3000/health"
+$apiProtectedProbeUrl = "http://127.0.0.1:3000/agents"
 $desktopLaunched = $false
 
 Set-Location $root
@@ -168,6 +170,22 @@ function Wait-ForCondition {
 function Test-HttpReady($Url) {
   try {
     $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
+    return $response.StatusCode -ge 200 -and $response.StatusCode -lt 500
+  } catch {
+    return $false
+  }
+}
+
+function Test-AuthenticatedApiReady {
+  try {
+    if (-not $env:HONEYCOMB_API_TOKEN) {
+      return $false
+    }
+    $response = Invoke-WebRequest `
+      -Uri $apiProtectedProbeUrl `
+      -UseBasicParsing `
+      -TimeoutSec 2 `
+      -Headers @{ Authorization = "Bearer $env:HONEYCOMB_API_TOKEN" }
     return $response.StatusCode -ge 200 -and $response.StatusCode -lt 500
   } catch {
     return $false
@@ -348,8 +366,8 @@ try {
     $dockerCli = $dockerCommand.Source
   }
 
-  if (Test-HttpReady $apiHealthUrl) {
-    Write-LaunchLog "API already healthy; skipping Docker Compose startup"
+  if ((Test-HttpReady $apiHealthUrl) -and (Test-AuthenticatedApiReady)) {
+    Write-LaunchLog "API already healthy and authenticated; skipping Docker Compose startup"
   } else {
     $dockerReadyDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $initialProbeTimeoutSeconds = [Math]::Min($dockerProbeTimeoutSeconds, [Math]::Max(1, $TimeoutSeconds))
@@ -366,13 +384,13 @@ try {
       throw "Docker daemon did not become ready within $TimeoutSeconds seconds"
     }
 
-    Write-LaunchLog "Starting backend stack"
-    Invoke-ProcessWithTimeout -FilePath $dockerCli -ArgumentList @("compose", "up", "-d") -TimeoutSeconds $dockerCommandTimeoutSeconds | Out-Null
+    Write-LaunchLog "Starting backend stack with image rebuild"
+    Invoke-ProcessWithTimeout -FilePath $dockerCli -ArgumentList @("compose", "up", "-d", "--build") -TimeoutSeconds $dockerBuildTimeoutSeconds | Out-Null
   }
 
-  $apiReady = Wait-ForCondition -Condition { Test-HttpReady $apiHealthUrl } -TimeoutSeconds $TimeoutSeconds -SleepSeconds 1
+  $apiReady = Wait-ForCondition -Condition { (Test-HttpReady $apiHealthUrl) -and (Test-AuthenticatedApiReady) } -TimeoutSeconds $TimeoutSeconds -SleepSeconds 1
   if (-not $apiReady) {
-    throw "API did not become ready within $TimeoutSeconds seconds"
+    throw "API did not become ready for authenticated desktop requests within $TimeoutSeconds seconds"
   }
 
   Write-LaunchLog "Launcher completed"
